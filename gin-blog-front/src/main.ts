@@ -5,5 +5,10 @@ import App from './App.vue'
 import "./style/reset.scss"
 import "./style/style.css"
 
-let app = createApp(App);
+import { router } from './router'
+import store from './store'
+
+const app = createApp(App);
+app.use(router); // 注册路由
+app.use(store); // 注册pinia
 app.mount('#app')

@@ -5,13 +5,15 @@
   <UToast ref="notifyRef" position="top" align="right" :timeout="3000" closeable />
 
   <div class="h-full w-full flex flex-col">
-    111
+    <!-- 顶部导航栏 -->
+    <AppHeader></AppHeader>
   </div>
 
 </template>
 
 <script setup lang="ts">
-import UToast from '@/components/ui/UToast.vue'
+import UToast from './components/ui/UToast.vue';
+import AppHeader from './components/layout/AppHeader.vue';
 </script>
 
 <style scoped lang="scss">
