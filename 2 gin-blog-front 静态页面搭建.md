@@ -820,3 +820,743 @@ async function logout() {
 
 
 
+## 2.3 home + 路由搭建
+
+### 2.3.1 HomeBanner
+
+**功能概述**：
+
+- 页面显示一个带有打字机效果的横幅，横幅中包括网站名称和一条随机名言。
+- 页面底部有社交媒体链接（QQ、GitHub、Gitee），并通过点击箭头可以触发页面滚动。
+- 背景图通过后端配置动态加载。
+
+**关键功能**：
+
+- **打字机特效**：通过 `EasyTyper` 实现，动态加载并显示名言。
+- **社交链接**：点击后打开对应的社交网站。
+- **平滑滚动**：点击箭头时，页面会平滑地滚动到下方。
+
+**可扩展性**：
+
+- 可以根据需要添加更多的社交链接、动画效果或者动态内容。
+- 可以自定义背景图片或颜色，并与后端配置进行绑定。
+
+```vue
+<template>
+    <!-- 自定义动画类（需要在 CSS 或 Tailwind 配置中定义），用于给横幅添加渐变或淡入效果。 -->
+    <div class="banner-fade-down absolute top-20 bottom-0 left-0 right-0 h-screen text-center text-white z-0" :style="coverStyle">
+        <!-- 这个容器被定位为绝对定位，inset-x-0 表示左右两侧的内边距为 0，mt-[43vh] 为元素顶部的外边距设置为 43vh（视口高度的 43%），目的是将内容从屏幕上方略微向下偏移。 -->
+        <div class="absolute inset-x-0 mt-[43vh] text-center space-y-3">
+            <h1 class="animate-zoom-in text-4xl font-bold lg:text-5xl">
+                {{ blogConfig.website_name }}
+            </h1>
+            <div class="text-lg lg:text-xl">
+                {{ typer.output }}
+                <span class="animate-ping"> | </span>
+            </div>
+        </div>
+
+
+        <!-- 社交信息（移动端专用） -->
+        <div class="text-2xl space-x-5">
+            <a :href="`http://wpa.qq.com/msgrd?v=3&uin=${blogConfig.qq}&site=qq&menu=yes`" target="_blank">
+                <span class="i-ant-design:qq-circle-filled inline-block">
+                    <Icon icon="ant-design:qq-circle-filled" style="font-size: 20px;" />
+                </span>
+            </a>
+            <a :href="blogConfig.github" target="_blank">
+                <span class="i-mdi:github inline-block">
+                    <Icon icon="mdi:github" style="font-size: 20px;" />
+                </span>
+            </a>
+            <a :href="blogConfig.gitee" target="_blank">
+                <span class="i-simple-icons:gitee inline-block">
+                    <Icon icon="simple-icons:gitee" style="font-size: 20px;" />
+                </span>
+            </a>
+        </div>
+
+
+        <!-- 向下滚动 -->
+        <div class="absolute bottom-0 w-full cursor-pointer" @click="scrollDown">
+            <span class="inline-block animate-bounce text-2xl text-white" >
+                <Icon icon="ep:arrow-down-bold" style="font-size: 30px;" />
+            </span>
+        </div>
+    </div>
+</template>
+
+<script setup lang="ts">
+import { Icon } from '@iconify/vue';
+import { useAppStore } from '@/store'
+import { computed, onMounted, reactive } from 'vue'
+import { storeToRefs } from 'pinia'
+import EasyTyper from 'easy-typer-js'
+// 从 Pinia store 中获取并解构出两个响应式数据：pageList 和 blogConfig
+const { pageList, blogConfig } = storeToRefs(useAppStore())
+
+// 打字机特效配置
+// reactive() 是一个用于创建响应式数据的函数，它使得对象或数组成为响应式的，也就是说，当数据发生变化时，视图会自动更新。
+const typer = reactive({
+    output: '',
+    isEnd: false, // 全局控制是否终止
+    speed: 300, // 打字速度
+    singleBack: false, // 单次的回滚
+    sleep: 0, // 完整输出一句话后, 睡眠一定时候后触发回滚事件
+    type: 'normal', // rollback, normal
+    backSpeed: 80, // 回滚速度
+    sentencePause: false, // 运行完毕后, 句子是否暂停显示
+})
+
+onMounted(() => {
+    getOneSentence()
+})
+
+// 随机获取一句名言
+function getOneSentence() {
+    // 一言 + 打字机特效
+    fetch('https://v1.hitokoto.cn/?c=i')
+        .then(res => res.json())
+        .then(data => new EasyTyper(typer, data.hitokoto, () => { }, () => { }))
+        .catch(() => new EasyTyper(typer, '宠辱不惊，看庭前花开花落；去留无意，望天上云卷云舒。', () => { }, () => { }))
+}
+
+// 这段代码定义了一个名为 scrollDown 的函数，目的是平滑地滚动页面到一个特定的位置。
+// 意味着页面将被滚动到当前视口的高度。也就是说，页面会滚动到下方一个完整的视口高度（例如，屏幕的下半部分）。
+function scrollDown() {
+    window.scrollTo({
+        behavior: 'smooth',
+        top: document.documentElement.clientHeight,
+    })
+}
+
+// 根据后端配置动态获取封面
+const coverStyle = computed(() => {
+    const page = pageList.value.find(e => e.label === 'home')
+    return page
+        ? `background: url('${page.cover}') center center / cover no-repeat;`
+        : 'background: grey center center / cover no-repeat;'
+})
+
+</script>
+
+<style scoped></style>
+```
+
+![image-20250202093637741](./assets/image-20250202093637741.png)
+
+
+
+
+
+### 2.3.2 TalkingCarousel
+
+#### 代码综述
+
+![image-20250202093735039](./assets/image-20250202093735039.png)
+
+**显示动态名言**：组件的主要功能是展示一条动态名言。默认名言是“书山有路勤为径，学海无涯苦作舟”，并且在组件加载时会从 API 获取一条新的名言，更新展示的内容。
+
+**交互按钮**：
+
+- **聊天图标按钮**：左侧按钮可能是用来触发聊天相关的功能。
+- **右侧箭头按钮**：右侧按钮带有闪烁的动画效果，可能用于表示向右或向下滑动，或者执行某些其他操作。
+
+**动画效果**：整个卡片和右侧箭头按钮都包含动画效果。卡片会在加载时缩放进入，右侧按钮则不断地左右闪烁，吸引用户注意。
+
+```vue
+<template>
+    <div class="card-view animate-zoom-in animate-duration-600">
+        <div class="flex text-center">
+            <button class="text-xl">
+                <Icon icon="mdi:chat-outline" />
+            </button>
+            <div class="flex-1">
+                {{ sentence }}
+            </div>
+            <button class="animate-arrow text-2xl">
+                <Icon icon="mdi-chevron-double-right" />
+            </button>
+        </div>
+    </div>
+</template>
+
+<script setup lang="ts">
+import { Icon } from '@iconify/vue';
+import { onMounted, ref } from 'vue'
+
+const sentence = ref('书山有路勤为径，学海无涯苦作舟。')
+
+onMounted(() => {
+    fetch('https://v1.hitokoto.cn/?c=i')
+        .then(res => res.json())
+        .then(data => sentence.value = data.hitokoto)
+})
+</script>
+
+<style scoped lang="scss">
+.animate-arrow {
+    animation: 1s passing infinite;
+}
+
+/* 左 -> 右 闪的特效 */
+@keyframes passing {
+    0% {
+        transform: translateX(-50%);
+        opacity: 0;
+    }
+
+    50% {
+        transform: translateX(0);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateX(50%);
+        opacity: 0;
+    }
+}
+</style>
+```
+
+
+
+#### 注意 环境配置
+
+`import.meta.env.VITE_API` 这个变量是由 **Vite** （一个前端构建工具）提供的环境变量，`VITE_API` 是一个自定义的环境变量。Vite 会在构建时根据 `.env` 文件中的配置提供这些环境变量，允许你在代码中使用它们。
+
++ **`import.meta.env`** 是一个对象，包含了在 **Vite** 中定义的所有环境变量。
++ **`VITE_API`** 是一个自定义的环境变量，通常在 Vite 项目的配置文件 `.env` 或 `.env.local` 中定义。
++ Vite 会自动识别以 `VITE_` 为前缀的环境变量，并将它们注入到 `import.meta.env` 中，允许你在代码中访问。
+
+**使用不同的环境配置**： Vite 允许在不同的环境中使用不同的配置文件。你可以根据不同的环境（开发、生产等）创建 `.env` 文件。例如：
+
+- `.env`（默认环境）
+- `.env.local`（本地环境，通常不会提交到版本控制）
+- `.env.production`（生产环境）
+- `.env.development`（开发环境）
+
+.env:
+
+```
+VITE_APP_TITLE = 'CodingHome'
+```
+
+.env.development:
+
+```
+# 资源公共路径,需要以 /开头和结尾
+VITE_PUBLIC_PATH = '/'
+
+# 基础 API: 设置代理就写代理 API, 否则写完整 URL
+VITE_API = '/api'
+
+# 后端 URL
+VITE_BACKEND_URL = 'http://localhost:8765'
+
+# 登录时是否需要验证码
+VITE_USE_CAPTCHA = false
+```
+
+
+
+
+
+### 2.3.4 ArticleCard
+
+- 这段代码的主要功能是显示文章的**卡片视图**，包括封面图、标题、置顶标记、日期、分类、标签和部分内容。用户可以点击封面图或标题跳转到文章的详情页。
+- 卡片使用了响应式布局，在不同屏幕尺寸下，封面图和文章信息会动态调整。
+- 通过使用 `v-if` 和 `v-for` 控制文章的置顶状态和标签的显示，增强了交互性。
+- 使用 `dayjs` 库格式化日期，显示更友好的时间格式。
+- 通过 `group-hover` 类，使得在鼠标悬停时，标题文字的颜色变化，增强了用户交互体验。
+
+总的来说，这是一个典型的文章卡片组件，适用于博客或新闻网站展示文章列表，提供了清晰的界面和流畅的用户体验。
+
+```vue
+<template>
+    <div
+        class="group h-[430px] w-full flex flex-col animate-zoom-in animate-duration-700 items-center rounded-xl bg-white shadow-md transition-600 md:h-[280px] md:flex-row hover:shadow-2xl">
+
+        <!-- 封面图 -->
+        <div :class="isRightClass" class="h-[230px] w-full overflow-hidden md:h-full md:w-45/100">
+            <RouterLink :to="`/article/${article.id}`">
+                <img class="h-full w-full transition-600 hover:scale-110" :src="convertImgUrl(article.img)">
+            </RouterLink>
+        </div>
+
+
+        <!-- 文章信息 -->
+        <div class="my-4 w-9/10 md:w-55/100 space-y-4 md:px-10">
+            <RouterLink :to="`/article/${article.id}`">
+                <span class="text-2xl font-bold transition-300 group-hover:text-violet">
+                    {{ article.title }}
+                </span>
+            </RouterLink>
+            <div class="flex flex-wrap text-sm color-[#858585]">
+                <!-- 置顶 -->
+                <span v-if="article.is_top === 1" class="flex items-center color-[#ff7242]">
+                    <Icon icon="carbon:align-vertical-top" style="font-size: 20px;" /> 置顶
+                </span>
+                <span v-if="article.is_top === 1" class="mx-1.5">|</span>
+                <!-- 日期 -->
+                <span class="flex items-center">
+                    <Icon icon="mdi-calendar-month-outline" style="font-size: 20px;" />{{
+                        dayjs(article.created_at).format('YYYY-MM-DD')
+                    }}
+                </span>
+                <span class="mx-1.5">|</span>
+                <!-- 分类 -->
+                <RouterLink :to="`/categories/${article.category_id}?name=${article.category?.name}`"
+                    class="flex items-center">
+                    <Icon icon="mdi-inbox-full" style="font-size: 20px;" /> {{ article.category?.name }}
+                </RouterLink>
+                <span class="mx-1.5">|</span>
+                <!-- 标签 -->
+                <div class="flex gap-1">
+                    <RouterLink v-for="tag in article.tags" :key="tag.id" :to="`/tags/${tag.id}?name=${tag.name}`"
+                        class="flex items-center">
+                        <Icon icon="mdi-tag-multiple" style="font-size: 20px;" /> {{ tag.name }}
+                    </RouterLink>
+                </div>
+            </div>
+            <div class="ell-4 text-sm leading-6">
+                {{ article.content }}
+            </div>
+        </div>
+    </div>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import { convertImgUrl } from '@/utils'
+import dayjs from 'dayjs'
+import { Icon } from '@iconify/vue';
+const props = defineProps({
+    idx: Number,
+    article: {},
+})
+
+// 判断图片放置位置 (左 or 右)
+const isRightClass = computed(() => props.idx % 2 === 0
+    ? 'rounded-t-xl md:order-0 md:rounded-l-xl md:rounded-tr-0'
+    : 'rounded-t-xl md:order-1 md:rounded-r-xl md:rounded-tl-0')
+</script>
+
+<style scoped lang="scss">
+.ell-4 {
+    display: -webkit-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+}
+</style>
+```
+
+![image-20250202094127859](./assets/image-20250202094127859.png)
+
+在这段代码中，文章内容的**左右布局**是通过 `flex` 布局和**响应式设计**来控制的。具体来说，主要通过以下部分来实现：
+
+1. **父容器布局**
+
+```vue
+<div class="group h-[430px] w-full flex flex-col animate-zoom-in animate-duration-700 items-center rounded-xl bg-white shadow-md transition-600 md:h-[280px] md:flex-row hover:shadow-2xl">
+```
+
+- `flex`: 使容器使用 Flexbox 布局。
+- `flex-col`: 在默认情况下（小屏幕），内容是竖直排列的。
+- `md:flex-row`: 在屏幕宽度达到 `md`（中等及以上屏幕尺寸，通常为 768px 及以上）时，改为横向布局，即**左右排列**。
+- `h-[430px]` 和 `md:h-[280px]`: 设置容器的高度，在大屏幕上设为 `280px`，在小屏幕上设为 `430px`。
+
+这段代码实现了响应式布局，使得文章卡片在小屏幕和大屏幕上的显示方式不同。
+
+2. **封面图的布局（左侧部分）**
+
+```vue
+<div :class="isRightClass" class="h-[230px] w-full overflow-hidden md:h-full md:w-45/100">
+    <RouterLink :to="`/article/${article.id}`">
+        <img class="h-full w-full transition-600 hover:scale-110" :src="convertImgUrl(article.img)">
+    </RouterLink>
+</div>
+```
+
+- `isRightClass`：根据 article 的索引（idx）判断封面图的放置位置是左侧还是右侧。它的值是通过 computed 计算出来的：
+  - 如果 `idx` 为偶数，封面图放左侧 (`md:order-0`)，
+  - 如果 `idx` 为奇数，封面图放右侧 (`md:order-1`)。
+- `h-[230px]`：在小屏幕上，封面图的高度为 230px。
+- `md:h-full`: 在大屏幕上，封面图的高度为 100%（自适应父容器高度）。
+- `md:w-45/100`：在大屏幕上，封面图宽度占 45%。
+
+### 3. **文章信息的布局（右侧部分）**
+
+```vue
+<div class="my-4 w-9/10 md:w-55/100 space-y-4 md:px-10">
+    <RouterLink :to="`/article/${article.id}`">
+        <span class="text-2xl font-bold transition-300 group-hover:text-violet">
+            {{ article.title }}
+        </span>
+    </RouterLink>
+    <!-- 其他文章信息（日期、分类、标签等） -->
+    <div class="ell-4 text-sm leading-6">
+        {{ article.content }}
+    </div>
+</div>
+```
+
+- **`w-9/10`**：在小屏幕上，文章信息部分宽度占 90%。
+- **`md:w-55/100`**：在大屏幕上，文章信息部分宽度占 55%。
+- **`space-y-4`**：在垂直方向上给子元素之间添加 4px 的间距。
+- **`md:px-10`**：在大屏幕上，给容器添加左右内边距。
+
+4. **封面图与文章信息的排列方式**
+
+- **小屏幕（`md` 以下）**：
+  - 在小屏幕下，`flex-col` 使得封面图和文章信息是竖直排列的，封面图在上，文章信息在下。
+  - `h-[430px]` 保证容器在小屏幕上的高度适合显示所有内容。
+- **大屏幕（`md` 以上）**：
+  - `flex-row` 将容器改为水平布局，封面图和文章信息并排显示。
+  - `md:w-45/100` 和 `md:w-55/100` 分别为封面图和文章信息设置了宽度，确保左右两部分适当地分配空间。
+- **封面图的位置**：
+  - 通过 `isRightClass` 动态决定封面图的位置：如果 `idx` 为偶数，封面图位于左侧；如果 `idx` 为奇数，封面图位于右侧。这个类通过 `computed` 计算得出，并根据不同的 `idx` 值应用不同的样式。
+
+
+
+### 2.3.4 api 请求接口
+
+**这里可以先把后端代码打开，方便构建前端内容：**
+
+src/utils/http.ts
+
+```typescript
+import axios from 'axios'
+import { useAppStore, useUserStore } from '@/store'
+
+
+// 通用请求
+export const baseRequest = axios.create(
+    {
+        baseURL: import.meta.env.VITE_API,
+        timeout: 12000,
+    },
+)
+
+
+baseRequest.interceptors.request.use(requestSuccess, requestFail)
+baseRequest.interceptors.response.use(responseSuccess, responseFail)
+
+// 前台请求
+export const request = axios.create(
+    {
+        baseURL: `${import.meta.env.VITE_API}/front`,
+        timeout: 12000,
+    },
+)
+
+
+request.interceptors.request.use(requestSuccess, requestFail)
+request.interceptors.response.use(responseSuccess, responseFail)
+
+/**
+ * 请求成功拦截
+ * @param {import('axios').InternalAxiosRequestConfig} config
+ */
+function requestSuccess(config: any) {
+    if (config.needToken) {
+        const { token } = useUserStore()
+        if (!token) {
+            return Promise.reject(new axios.AxiosError('当前没有登录，请先登录！', '401'))
+        }
+        // 如果 config.headers.Authorization 已经有值（即该字段已经被设置），则 不做任何更改。
+        config.headers.Authorization = config.headers.Authorization || `Bearer ${token}`
+    }
+    return config
+}
+
+/**
+* 请求失败拦截
+* @param {any} error
+*/
+function requestFail(error: any) {
+    return Promise.reject(error)
+}
+
+
+
+/**
+ * 响应成功拦截
+ * @param {import('axios').AxiosResponse} response
+ */
+function responseSuccess(response: any) {
+    const responseData = response.data
+    const { code, message } = responseData
+    console.log(message)
+    if (code !== 0) { // 与后端约定业务状态码
+        if (code === 1203) {
+            // 移除 token
+            const userStore = useUserStore()
+            userStore.resetLoginState()
+        }
+        (window as any).$message.error(message)
+        return Promise.reject(responseData)
+    }
+    return Promise.resolve(responseData)
+}
+
+/**
+ * 响应失败拦截
+ * @param {any} error
+ */
+function responseFail(error: any) {
+    const { code, message } = error
+    if (code === 401) {
+        (window as any).$message.error(message)
+        // 移除 token
+        const userStore = useUserStore()
+        userStore.resetLoginState()
+        // 登录弹框
+        const appStore = useAppStore()
+        appStore.setLoginFlag(true)
+    }
+    return Promise.reject(error)
+}
+```
+
+这段代码是一个用于 **Axios 请求拦截和响应拦截** 的实现，主要用于处理 API 请求的认证、错误处理以及前端用户状态的管理。它创建了两个 `axios` 实例：`baseRequest` 和 `request`，分别用于不同的请求场景，并通过拦截器对请求和响应做了预处理。具体作用如下：
+
+1. **创建 Axios 实例**
+
+- `baseRequest`: 用于通用的 API 请求。
+- `request`: 用于特定的前台 API 请求（`/front` 路径）。
+
+```typescript
+export const baseRequest = axios.create({
+    baseURL: import.meta.env.VITE_API, // 基础 URL 从环境变量中读取
+    timeout: 12000,  // 设置请求超时为 12 秒
+});
+
+export const request = axios.create({
+    baseURL: `${import.meta.env.VITE_API}/front`, // 前台请求的基础 URL
+    timeout: 12000,  // 设置请求超时为 12 秒
+});
+```
+
+这两者都设置了相同的超时时间和基本 URL，但 `request` 的基础 URL 上添加了 `/front` 路径。
+
+2. **请求拦截器（Request Interceptors）**
+
+请求拦截器会在请求发送之前执行，用来处理一些逻辑，如验证用户是否登录，或者添加请求头（例如 token）。
+
+`requestSuccess`:
+
+- 如果请求需要认证 token（由 `config.needToken` 决定），会检查 `useUserStore` 中的 token。
+- 如果没有 token，则拒绝该请求并返回一个 `401` 错误，提示用户未登录。
+- 如果有 token，则将其添加到请求头的 `Authorization` 字段中（使用 `Bearer ${token}` 格式）。
+
+```
+function requestSuccess(config: any) {
+    if (config.needToken) { // 如果请求需要 token
+        const { token } = useUserStore()  // 从 store 中获取 token
+        if (!token) {
+            return Promise.reject(new axios.AxiosError('当前没有登录，请先登录！', '401'))  // 如果没有 token，返回错误
+        }
+        config.headers.Authorization = config.headers.Authorization || `Bearer ${token}`  // 否则设置 token 到 Authorization 头中
+    }
+    return config
+}
+```
+
+`requestFail`:
+
+- 如果请求发生错误，直接返回该错误。
+
+```
+function requestFail(error: any) {
+    return Promise.reject(error)
+}
+```
+
+3. **响应拦截器（Response Interceptors）**
+
+响应拦截器会在响应到达时进行处理。通过响应拦截器，可以统一处理 API 请求的结果和错误，处理比如 token 失效等常见问题
+
+`responseSuccess`:
+
+- 当响应成功时（即后端返回的 `code` 为 `0`），会正常返回响应数据。
+- 如果后端返回的 `code` 不等于 `0`，表示业务逻辑错误（如 token 失效），会提示错误信息，并且根据错误码 `1203` 清除登录状态。
+
+```
+function responseSuccess(response: any) {
+    const responseData = response.data
+    const { code, message } = responseData
+    console.log(message)
+    if (code !== 0) { // 后端约定的业务状态码
+        if (code === 1203) {  // 如果是 1203 错误码，表示 token 失效
+            const userStore = useUserStore()
+            userStore.resetLoginState()  // 重置登录状态
+        }
+        (window as any).$message.error(message)  // 提示用户错误信息
+        return Promise.reject(responseData)  // 拒绝 Promise，返回错误数据
+    }
+    return Promise.resolve(responseData)  // 返回成功的数据
+}
+```
+
+`responseFail`:
+
+- 如果响应失败（例如网络错误，或者返回 401 错误），会执行以下操作：
+  - 如果是 `401` 错误，表示用户未授权或者 token 失效，会提示用户错误信息，清除登录状态，并弹出登录框。
+
+```
+function responseFail(error: any) {
+    const { code, message } = error
+    if (code === 401) {  // 如果是 401 错误，表示未登录或者 token 失效
+        (window as any).$message.error(message)  // 提示错误信息
+        const userStore = useUserStore()
+        userStore.resetLoginState()  // 清除 token 和用户登录状态
+        const appStore = useAppStore()
+        appStore.setLoginFlag(true)  // 弹出登录框
+    }
+    return Promise.reject(error)  // 返回拒绝的 Promise
+}
+```
+
+这个代码段非常适合在需要 **用户认证**（如需要 token 才能访问 API）的应用中使用。它可以确保：
+
+- 请求时自动携带 token，避免每次手动设置。
+- 如果 token 失效（如 `401` 错误），可以自动清除登录状态，并弹出登录框，提升用户体验。
+
+------
+
+------
+
+然后我们补充src/api.ts：
+
+```typescript
+import { baseRequest, request } from '@/utils/http'
+
+export default {
+    /** 首页文章列表 */
+    getArticles: (params: any) => request.get('/article/list', { params }),
+}
+```
+
+然后vite.config.ts 中进行相应请求配置：
+
+```typescript
+server: {
+      host: '0.0.0.0',
+      port: 3333,
+      open: false,
+      proxy: {
+        '/api': {
+          target: env.VITE_BACKEND_URL,
+          changeOrigin: true,
+        },
+      },
+    },
+```
+
+
+
+### 2.3.5 首页 home 静态搭建
+
+在 src/App.vue 中添加如下内容：
+
+```vue
+<template>
+  <!-- 顶部中间的消息提示 -->
+  <UToast ref="messageRef" position="top" align="center" :timeout="3000" closeable />
+  <!-- 右上方的消息通知 -->
+  <UToast ref="notifyRef" position="top" align="right" :timeout="3000" closeable />
+
+  <div class="h-full w-full flex flex-col">
+    <!-- 顶部导航栏 -->
+    <AppHeader class="z-10"/>
+
+    <!-- 中间内容(包含底部信息) -->
+    <article class="flex flex-1 flex-col">
+      <!-- { Component, route } 是解构语法，表示从插槽中提取 Component 和 route 两个属性：
+            Component：当前路由匹配的组件。
+            route：当前路由的信息，包括 path、name 等属性。 
+        -->
+      <RouterView v-slot="{ Component, route }">  
+        <!-- :key 的主要目的是确保组件在变化时能够正确地重新渲染，而不会出现状态或渲染的错误。 -->
+        <component :is="Component" :key="route.path" />
+      </RouterView>
+    </article>
+
+  </div>
+
+</template>
+...
+```
+
+其中，当用户访问一个特定的路由时，`<RouterView>` 会渲染与该路由匹配的组件。例如，如果当前 URL 路径是 `/home`，并且你在路由配置中定义了与之匹配的 `Home` 组件，那么这个组件将会通过 `<RouterView>` 被显示出来。
+
++ Vue Router 支持嵌套路由，这意味着一个路由组件中可能会有另一个 `<RouterView>`，用于渲染更深层次的嵌套路由组件。
++ 例如，在你的应用中，如果你有一个布局组件，它包含多个区域，其中一个区域是用来渲染嵌套路由的内容，那么你可以在该区域使用 `<RouterView>`。
+
+因此，我们这里去配置 routes 并完成 home 组件，即首页的开发：
+
+src/router/index.ts
+
+```typescript
+import { createRouter, createWebHistory } from 'vue-router'
+
+const basicRoutes = [
+    {
+      name: 'Home',
+      path: '/',
+      component: () => import('@/views/home/index.vue'),
+    },
+]
+
+export const router = createRouter({
+    history: createWebHistory('/'),
+    routes: basicRoutes,
+    scrollBehavior: () => ({ left: 0, top: 0 }),
+  })
+
+
+
+// main.ts
+import { router } from './router'
+import store from './store'
+
+const app = createApp(App);
+app.use(router); // 注册路由
+app.use(store); // 注册pinia
+app.mount('#app')
+```
+
+**src/views/home/index.vue**
+
+```vue
+<template>
+    <!-- 首页封面图 -->
+    <HomeBanner />
+    <!-- 内容 -->
+    <div class="mx-auto mb-8 max-w-[1230px] flex flex-col justify-center px-3" style="margin-top: calc(100vh + 30px)">
+        <!-- 这表示容器会被划分为 12 列，每列占据相同的空间 -->
+        <div class="grid grid-cols-12 gap-4">
+            <!-- 左半部分 -->
+            <div class="col-span-0 lg:col-span-9 space-y-5">
+                <!-- 说说轮播 -->
+                <TalkingCarousel />
+                <!-- 文章列表 -->
+                <div class="space-y-5">
+                    <ArticleCard v-for="(item, idx) in articleList" :key="item.id" :article="item" :idx="idx" />
+                </div>
+            </div>
+            <!-- 右半部分 -->
+            <div class="col-span-0 lg:col-span-3">
+
+            </div>
+        </div>
+    </div>
+</template>
+....
+```
+
+
+

@@ -12,3 +12,6 @@ const app = createApp(App);
 app.use(router); // 注册路由
 app.use(store); // 注册pinia
 app.mount('#app')
+
+
+console.log(import.meta.env.VITE_APP_TITLE)

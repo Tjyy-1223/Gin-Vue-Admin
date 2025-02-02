@@ -4,7 +4,7 @@ const basicRoutes = [
     {
       name: 'Home',
       path: '/',
-      component: () => import('@/App.vue')
+      component: () => import('@/views/home/index.vue'),
     },
 ]
 
