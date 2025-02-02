@@ -20,7 +20,7 @@ export const useUserStore = defineStore('user', {
     userInfo: {
       id: '',
       nickname: '',
-      avatar: 'https://example.com/default-avatar.png',
+      avatar: 'https://www.bing.com/rp/ar_9isCNU2Q-VG1yEDDHnx8HAFQ.png',
       website: '',
       intro: '',
       email: '',
@@ -32,7 +32,7 @@ export const useUserStore = defineStore('user', {
   getters: {
     userId: state => state.userInfo.id ?? '',
     nickname: state => state.userInfo.nickname ?? '',
-    avatar: state => state.userInfo.avatar ?? 'https://example.com/default-avatar.png',
+    avatar: state => state.userInfo.avatar ?? 'https://www.bing.com/rp/ar_9isCNU2Q-VG1yEDDHnx8HAFQ.png',
     website: state => state.userInfo.website ?? '',
     intro: state => state.userInfo.intro ?? '',
     email: state => state.userInfo.email ?? '',

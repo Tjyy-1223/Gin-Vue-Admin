@@ -20,7 +20,13 @@ export const useAppStore = defineStore('app', {
             website_name: 'CodingHome',
             website_author: 'Tjyy',
             website_intro: 'coding is coding',
-            website_avatar: '',
+            website_avatar: 'https://www.bing.com/rp/ar_9isCNU2Q-VG1yEDDHnx8HAFQ.png',
+            website_notice: 'hello, world',
+            qq: '',
+            github: '',
+            gitee: '',
+            website_createtime: '2025-2-1',
+            website_record: 'CodingHome'
         },
     }),
     getters: {

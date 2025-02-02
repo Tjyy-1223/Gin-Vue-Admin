@@ -1,4 +1,4 @@
-# 第二章 gin-blog-front 静态页面搭建
+# 第二章 gin-blog-front 首页搭建
 
 ## 2.1 消息提示组件
 
@@ -1560,3 +1560,16 @@ app.mount('#app')
 
 
 
+## 2.3.4 Home 首页右侧补充
+
+包括如下内容，代码不在赘述
+
++ 博主信息： AuthorInfo
++ 公告： Announcement
++ 网站咨询：WebsiteInfo
+
+除此之外，继续补充首页底部：AppFooter
+
+**最终效果图如下：**
+
+![image-20250202135628248](./assets/image-20250202135628248.png)
