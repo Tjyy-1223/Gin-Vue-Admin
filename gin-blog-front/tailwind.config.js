@@ -4,7 +4,11 @@ const { iconsPlugin, getIconCollections } = require('@egoist/tailwindcss-icons')
 export default {
   content: ["index.html", "./src/**/*.{html,js,ts,jsx,tsx,vue}"],
   theme: {
-    extend: {},
+    extend: {
+      transitionDuration: {
+        '500': '500ms',
+      },
+    },
   },
   plugins: [
     iconsPlugin({

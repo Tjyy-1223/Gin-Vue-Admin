@@ -1,9 +1,14 @@
 import { createApp } from 'vue'
-import './style.css'
 import App from './App.vue'
-// 清除默认样式
-import "./style/reset.scss"
-import "./style/style.css"
+
+// custom style
+// import './style/index.css'
+import './style/common.css'
+// import './style/animate.css'
+
+// unocss
+import 'uno.css'
+import '@unocss/reset/tailwind.css'
 
 import { router } from './router'
 import store from './store'

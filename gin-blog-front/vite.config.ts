@@ -1,17 +1,11 @@
 import { defineConfig, loadEnv } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import unocss from 'unocss/vite'
 import path from 'path';
+import viteCompression from 'vite-plugin-compression'
+import { visualizer } from 'rollup-plugin-visualizer'
 
-// https://vitejs.dev/config/
-// export default defineConfig({
 
-//   plugins: [vue()],
-//   resolve: {
-//     alias: {
-//       '@': path.resolve(__dirname, 'src'),  // 将 '@' 映射到 src 目录
-//     },
-//   },
-// });
 export default defineConfig((configEnv) => {
   const env = loadEnv(configEnv.mode, process.cwd())
   return {
@@ -22,7 +16,12 @@ export default defineConfig((configEnv) => {
         '~': path.resolve(process.cwd()),
       },
     },
-    plugins: [vue()],
+    plugins: [
+      vue(),
+      unocss(),
+      viteCompression({ algorithm: 'gzip' }),
+      visualizer({ open: false, gzipSize: true, brotliSize: true }),
+    ],
     server: {
       host: '0.0.0.0',
       port: 3333,
@@ -33,6 +32,13 @@ export default defineConfig((configEnv) => {
           changeOrigin: true,
         },
       },
+    },
+    // https://cn.vitejs.dev/guide/api-javascript.html#build
+    build: {
+      chunkSizeWarningLimit: 1024, // chunk 大小警告的限制 (单位 kb)
+    },
+    esbuild: {
+      drop: ['debugger'], // console
     },
   }
 })

@@ -27,6 +27,7 @@
   <GlobalModal/>
 </template>
 
+
 <script setup lang="ts">
 import UToast from './components/ui/UToast.vue';
 import AppHeader from './components/layout/AppHeader.vue';
@@ -53,7 +54,5 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-div {
-  height: 300px;
-}
+
 </style>
