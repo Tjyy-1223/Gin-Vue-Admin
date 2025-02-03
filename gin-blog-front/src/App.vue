@@ -6,7 +6,7 @@
 
   <div class="h-full w-full flex flex-col">
     <!-- 顶部导航栏 -->
-    <AppHeader class="z-10"/>
+    <AppHeader />
 
     <!-- 中间内容(包含底部信息) -->
     <article class="flex flex-1 flex-col">
@@ -14,19 +14,24 @@
             Component：当前路由匹配的组件。
             route：当前路由的信息，包括 path、name 等属性。 
         -->
-      <RouterView v-slot="{ Component, route }">  
+      <RouterView v-slot="{ Component, route }">
         <!-- :key 的主要目的是确保组件在变化时能够正确地重新渲染，而不会出现状态或渲染的错误。 -->
         <component :is="Component" :key="route.path" />
       </RouterView>
     </article>
-
   </div>
 
+  <!-- 回到顶部 -->
+  <BackToTop />
+  <!-- 全局弹窗 -->
+  <GlobalModal/>
 </template>
 
 <script setup lang="ts">
 import UToast from './components/ui/UToast.vue';
 import AppHeader from './components/layout/AppHeader.vue';
+import GlobalModal from '@/components/modal/index.vue'
+import BackToTop from '@/components/BackToTop.vue'
 import { useAppStore, useUserStore } from '@/store';
 import { onMounted, ref } from 'vue'
 

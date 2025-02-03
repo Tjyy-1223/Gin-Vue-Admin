@@ -1,6 +1,6 @@
 <template>
     <!-- 自定义动画类（需要在 CSS 或 Tailwind 配置中定义），用于给横幅添加渐变或淡入效果。 -->
-    <div class="banner-fade-down absolute top-20 bottom-0 left-0 right-0 h-screen text-center text-white z-0" :style="coverStyle">
+    <div class="banner-fade-down absolute bottom-0 left-0 top-20 right-0 z-10 h-screen text-center text-white" :style="coverStyle">
         <!-- 这个容器被定位为绝对定位，inset-x-0 表示左右两侧的内边距为 0，mt-[43vh] 为元素顶部的外边距设置为 43vh（视口高度的 43%），目的是将内容从屏幕上方略微向下偏移。 -->
         <div class="absolute inset-x-0 mt-[43vh] text-center space-y-3">
             <h1 class="animate-zoom-in text-4xl font-bold lg:text-5xl">

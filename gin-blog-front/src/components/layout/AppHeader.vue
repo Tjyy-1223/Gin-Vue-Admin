@@ -23,8 +23,8 @@
 
     <!-- 电脑端顶部导航栏 -->
     <Transition name="slide-fade" appear>
-        <div v-if="barShow" :class="navClass" class="fixed inset-x-0 top-0 z-11 hidden h-[60px] lg:block">
-            <div class="h-full flex items-center justify-between px-9">
+        <div v-if="barShow" :class="navClass" class="fixed inset-x-0 top-0 z-20 hidden h-[60px] lg:block">
+            <div class="h-full flex items-center justify-between px-9 z-20">
                 <!-- 左上角标题 -->
                 <RouterLink to="/" class="text-xl font-bold">
                     {{ appStore.blogConfig.website_author }}
@@ -149,7 +149,7 @@ watchThrottled(y, () => {
 
 // 退出登录
 async function logout() {
-    //   await userStore.logout()
+    await userStore.logout()
     if (route.name === 'User') {
         router.push('/') // 退出后跳转到首页
     }
