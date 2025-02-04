@@ -64,8 +64,8 @@
                                 </a>
                                 <!-- TODO: 博主标记 -->
                                 <!-- <span v-if="reply.user_id === 10" class="ml-6 inline-block rounded-3 bg-#ffa51e px-6 py-1 text-sm color-#fff">
-                    博主
-                  </span> -->
+                                博主
+                            </span> -->
                             </div>
                             <!-- 时间 + 点赞 + 回复按钮 -->
                             <div class="flex justify-between text-sm">
