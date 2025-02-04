@@ -86,11 +86,11 @@ export const useUserStore = defineStore('user', {
     //     ? this.commentLikeSet.splice(this.commentLikeSet.indexOf(commentId), 1)
     //     : this.commentLikeSet.push(commentId)
     // },
-    // articleLike(articleId) {
-    //   this.articleLikeSet.includes(articleId)
-    //     ? this.articleLikeSet.splice(this.articleLikeSet.indexOf(articleId), 1)
-    //     : this.articleLikeSet.push(articleId)
-    // },
+    articleLike(articleId) {
+      this.articleLikeSet.includes(articleId)
+        ? this.articleLikeSet.splice(this.articleLikeSet.indexOf(articleId), 1)
+        : this.articleLikeSet.push(articleId)
+    },
   },
   persist: true
   // persist: {

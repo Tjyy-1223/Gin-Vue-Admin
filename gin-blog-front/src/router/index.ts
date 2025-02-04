@@ -9,6 +9,11 @@ const basicRoutes = [
     component: () => import('@/views/home/index.vue'),
   },
   {
+    name: 'Article',
+    path: '/article/:id',
+    component: () => import('@/views/article/detail/index.vue'),
+  },
+  {
     name: 'Archive',
     path: '/archives',
     component: () => import('@/views/discover/archive/index.vue'),
@@ -46,6 +51,30 @@ const basicRoutes = [
     component: () => import('@/views/article/list/index.vue'),
     meta: {
       title: '标签',
+    },
+  },
+  {
+    name: 'Album',
+    path: '/albums',
+    component: () => import('@/views/entertainment/album/index.vue'),
+    meta: {
+      title: '相册',
+    },
+  },
+  {
+    name: 'Link',
+    path: '/links',
+    component: () => import('@/views/link/index.vue'),
+    meta: {
+      title: '友情链接',
+    },
+  },
+  {
+    name: 'About',
+    path: '/about',
+    component: () => import('@/views/about/index.vue'),
+    meta: {
+      title: '关于我',
     },
   },
 ]
