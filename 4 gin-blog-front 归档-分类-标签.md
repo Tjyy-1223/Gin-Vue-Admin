@@ -1,5 +1,44 @@
 # 第四章 gin-blog-front Archive/Caregory/Tag
 
+## 0 更改配置
+
+对于一些自定义的样式文件分别存在于：
+
++ import './style/index.css'
++ import './style/common.css'
++ import './style/animate.css'
+
+当前的 main.ts 配置如下：
+
+```typescript
+import { createApp } from 'vue'
+import App from './App.vue'
+
+// custom style
+// import './style/index.css'
+import './style/common.css'
+// import './style/animate.css'
+
+// unocss
+import 'uno.css'
+import '@unocss/reset/tailwind.css'
+
+import { router } from './router'
+import store from './store'
+
+const app = createApp(App);
+app.use(router); // 注册路由
+app.use(store); // 注册pinia
+app.mount('#app')
+
+
+console.log(import.meta.env.VITE_APP_TITLE)
+```
+
+> import 中的对应配置需要执行 pnpm add ... 进行加载
+
+
+
 ## 1 Router 配置
 
 **首先在 Router 中进行相应的路由配置，其中的 components指向的元素会被现实在 Router-View 包裹的位置，大致的代码思路如下：**

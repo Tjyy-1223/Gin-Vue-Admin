@@ -1,5 +1,54 @@
 # 第二章 gin-blog-front 首页搭建
 
+## 2.0 初始化
+
+**新建一个文件夹后进入终端：** 
+
+1. pnpm create vite -> gin-blog-front -> vue -> ts -> 初始化完毕
+
+2. 安装 vue 核心依赖：cd framework -> pnpm i
+3. 运行项目 : pnpm run dev
+4. 项目起步完成
+
+**项目结构中：**
+
+1. Node_modules 中包含了 vue 相关的依赖
+
+2. Package.json 中存放了 vue 的相关配置信息
+
+3. public 文件夹下存放了相关的静态资源
+
+4. src 是代码核心区域，删除一下的文件夹
+
+   + 删除 components/helloworld.vue
+   + 安装 vue vscode snippets 插件
+   + App.vue 安装删除后输入 v3ts
+
+除此之外，可以将 main.ts 中引入默认样式：
+
+```typescript
+import { createApp } from 'vue'
+import App from './App.vue'
+
+// custom style
+// import './style/index.css'
+import './style/common.css'
+// import './style/animate.css'
+
+// unocss
+import 'uno.css'
+import '@unocss/reset/tailwind.css'
+
+const app = createApp(App);
+app.mount('#app')
+```
+
+之后，就可以开始编写对应的 vue 代码了
+
+
+
+
+
 ## 2.1 消息提示组件
 
 构建顶部中间的消息提示以及右上方的消息组件
