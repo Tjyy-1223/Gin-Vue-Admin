@@ -1,5 +1,29 @@
 # 第二章 gin-blog-front 首页搭建
 
+注意：下面的过程中， import 相关的地方可能有所遗漏，需要自行查找资料进行配置，例如：
+
+```
+import '@unocss/reset/tailwind.css'
+```
+
+则参考：
+
+https://unocss.jiangruyi.com/integrations/cli
+
+------
+
+**除此之外，注意下面几个文件需要保持几乎一致：**
+
+1. **src/main.ts**
+2. **.env **
+3. **.env.development**
+4. **.env.production**
+5. **tailwind.config.js**
+6. **tsconfig.app.json**
+7. **vite.config.ts**
+
+
+
 ## 2.0 初始化
 
 **新建一个文件夹后进入终端：** 
