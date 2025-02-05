@@ -88,7 +88,7 @@
                                     </a>
                                     <span v-else>
                                         @{{ reply.user?.info?.nickname }}
-                                    </span>，
+                                    </span>
                                 </template>
                                 <span class="my-3" v-html="reply.content" />
                             </div>
@@ -213,10 +213,12 @@ function replyComment(idx, obj) {
     // 关闭所有回复框
     replyFieldRefs.value.forEach(e => e.setReply(false))
     // 打开当前点击的回复框
+    console.log('obj.nickname:  ' + obj.nickname)
     const curRef = replyFieldRefs.value[idx]
     if (curRef) {
         curRef.setReply(true)
         // * 将值传给回复框
+        console.log('obj.nickname:  ' + obj.nickname)
         curRef.data.nickname = obj.nickname // 用户昵称
         curRef.data.reply_user_id = obj.user_id // 回复用户 id
         curRef.data.parent_id = commentList.value[idx].id // 父评论 id

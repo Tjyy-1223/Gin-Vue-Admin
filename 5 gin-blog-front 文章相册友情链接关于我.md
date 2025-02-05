@@ -1454,6 +1454,14 @@ const isLike = computed(() => id => userStore.commentLikeSet.includes(id))
 
 
 
+
+
+
+
+
+
+
+
 ### 5.1.12 index.vue
 
 ![image-20250204225009136](./assets/image-20250204225009136.png)

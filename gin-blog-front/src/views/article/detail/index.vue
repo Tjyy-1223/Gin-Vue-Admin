@@ -115,7 +115,7 @@ onMounted(async () => {
         // highlight.js 代码高亮
         document.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el))
         // MathJax 渲染公式
-        window.MathJax.typeset()
+        // window.MathJax.typeset()
     }
     catch (err) {
         console.error(err)
