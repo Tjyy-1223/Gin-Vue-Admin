@@ -954,7 +954,28 @@ watchThrottled(y, () => {
 
 ![image-20250204224934588](./assets/image-20250204224934588.png)
 
-src/components/comment/CommentField.vue
+**src/components/comment/CommentField.vue**
+
+这段代码实现了一个评论框组件，具体功能如下：
+
+1. **显示评论框**：
+   - 根据 `show` 的值决定是否显示评论框。
+2. **用户头像**：
+   - 显示用户头像。
+3. **评论输入框**：
+   - 提供评论输入框，支持动态提示文本。
+4. **操作按钮**：
+   - 提供表情选择按钮（功能正在开发中）。
+   - 提供取消按钮（如果是在回复模式下）。
+   - 提供提交按钮，提交评论。
+5. **提交评论**：
+   - 检查用户是否登录，检查评论内容是否为空，调用后端接口提交评论。
+
+**示例效果**
+
+- 显示评论框，用户可以输入评论内容。
+- 提供表情选择按钮和提交按钮。
+- 提交评论后，清空输入框，隐藏回复框，调用父组件的刷新方法。
 
 ```vue
 <template>
@@ -1069,7 +1090,27 @@ textarea {
 </style>
 ```
 
-src/components/comment/Paging.vue
+**src/components/comment/Paging.vue**
+
+这段代码实现了一个分页组件，具体功能如下：
+
+1. **显示总页数**：
+   - 显示总页数，格式为“共 {{ pageTotal }} 页”。
+2. **上一页按钮**：
+   - 提供“上一页”按钮，点击时跳转到上一页。
+3. **页码列表**：
+   - 如果总页数小于 6 页，直接显示所有页码。
+   - 当前页码显示为高亮样式。
+4. **下一页按钮**：
+   - 提供“下一页”按钮，点击时跳转到下一页。
+5. **动态更新**：
+   - 通过 `emit` 触发父组件的 `changeCurrent` 方法，更新当前页数。
+
+**示例效果**
+
+- 显示总页数。
+- 提供“上一页”和“下一页”按钮。
+- 显示页码列表，当前页码高亮显示。
 
 ```vue
 <template>
@@ -1148,7 +1189,59 @@ defineExpose({
 </style>
 ```
 
-src/components/comment/Comment.vue
+------
+
+------
+
+**src/components/comment/Comment.vue**
+
+这段代码是一个Vue 3组件，用于实现评论区的功能，包括加载评论、评论回复、点赞、分页等。以下是具体功能的解释：
+
+1. **基础结构与数据管理**
+
+- **`type`**：该组件接受一个`type`的prop，表示评论的类型，如文章、友链、说说等。
+- **`topicId`**：从`vue-router`的路由参数中获取`id`，用作当前评论的主题ID。
+- **`commentList`**：存储评论列表数据。
+- **`commentCount`**：存储评论的总数量。
+- **`listLoading`**：表示评论列表是否在加载中。
+- **`params`**：用于控制加载评论的参数，如类型、页数、每页评论数等。
+
+2. **评论加载与分页**
+
+- **`getComments()`**：这是一个异步函数，用于获取评论数据。通过`api.getComments()`调用后端接口，加载评论列表并根据需要分页。
+- **`reloadComments()`**：重新加载评论，通常是在用户提交评论之后调用，刷新评论列表。
+- **`refresh`**：通过`watch`监听`commentList`的变化，确保每次数据更新时评论列表能够正确地刷新，而不会造成顺序错乱。
+
+3. **回复功能**
+
+- **`replyComment()`**：用户点击“回复”按钮时，会显示回复框并传递相关数据（如评论的昵称、用户ID、父评论ID等）。
+- **`reloadReplies()`**：提交回复后会调用该函数，重新加载某个评论的回复数据，并更新该评论的回复列表。
+- **`checkReplies()`**：点击“查看更多”按钮时，加载更多回复并更新显示。
+- **`changeReplyCurrent()`**：分页显示评论的回复时，用于切换当前页并重新加载对应页的回复。
+
+4. **点赞功能**
+
+- **`likeComment()`**：用户点击“点赞”按钮时，会判断用户是否已经点赞过该评论。如果已经点赞，会取消点赞并更新点赞数；如果没有点赞，则增加点赞数并更新状态。
+- **`isLike()`**：计算属性，用于判断当前用户是否点赞过某个评论。
+
+5. **评论回复分页**
+
+- **`Paging`**：该组件用于显示评论回复的分页器。每个评论的回复如果超过5条，则会显示分页控件，可以点击加载更多回复。
+- **`checkRefs`** 和 **`pageRefs`**：分别用于控制“查看更多”按钮和分页器的显示状态。
+
+6. **使用的外部工具和组件**
+
+- **`dayjs`**：用于格式化时间，将评论的创建时间转化为用户友好的格式。
+- **`convertImgUrl`**：用于处理用户头像的图片地址。
+- **`CommentField`**：一个输入框组件，用户可以在该组件中输入评论或回复内容。
+- **`ULoading`**：加载动画组件，用于评论列表加载时显示加载状态。
+- **`useAppStore`** 和 **`useUserStore`**：从全局状态中获取应用和用户信息（例如用户ID、点赞状态等）。
+
+7. **错误处理和消息提示**
+
+- **`window.$message?.info()`** 和 **`window.$message?.success()`**：用于在点赞操作后给用户展示提示消息（如“已点赞”或“已取消”）。
+
+这段代码实现了一个完整的评论区功能，包括加载评论、分页、点赞、回复等功能。用户可以查看评论、回复其他用户的评论，点赞评论，同时支持分页加载更多评论和回复。每当评论或回复提交时，都会更新评论列表，确保用户看到最新的评论数据。
 
 ```vue
 <template>
@@ -1610,14 +1703,182 @@ const styleVal = computed(() =>
 
 ## 5.2 Album 相册
 
+<img src="./assets/image-20250205104548488.png" alt="image-20250205104548488" style="zoom:50%;" />
 
+这段代码实现了一个简单的“404 页面未找到”页面，具体功能如下：
+
+1. **显示标题**：
+   - 显示“禁止访问”文本。
+2. **显示图片**：
+   - 显示 404 图片，增强视觉效果。
+3. **返回首页**：
+   - 提供一个按钮，点击时跳转到首页。
+
+**示例效果**
+
+- 页面顶部显示标题“禁止访问”。
+- 显示 404 图片。
+- 提供一个返回首页的按钮。
+
+```vue
+<template>
+    <BannerPage label="album" card>
+        <div class="text-center">
+            <span class="text-8">
+                禁止访问
+            </span>
+            <div class="flex justify-center">
+                <img class="w-50" src="/images/404.svg" alt="404">
+            </div>
+            <button @click="$router.push('/')">
+                回到首页
+            </button>
+        </div>
+    </BannerPage>
+</template>
+
+
+<script setup>
+import BannerPage from '@/components/BannerPage.vue'
+</script>
+
+<style lang="scss" scoped></style>
+```
 
 
 
 ## 5.3 Link 友情链接
+
+<img src="./assets/image-20250205105443711.png" alt="image-20250205105443711" style="zoom:67%;" />
+
+这段代码实现了一个“友情链接”页面，具体功能如下：
+
+1. **友链列表**：
+   - 动态显示友情链接数据，使用 `LinkList` 组件。
+2. **添加友链**：
+   - 提供添加友链的功能，使用 `AddLink` 组件。
+3. **评论区域**：
+   - 显示评论区域，使用 `Comment` 组件，评论类型为“友情链接”。
+4. **加载状态**：
+   - 使用 `loading` 控制页面的加载动画。
+
+**示例效果**
+
+- 页面顶部显示标题“友情链接”。
+- 显示友链列表。
+- 提供添加友链的功能。
+- 显示评论区域。
+
+```vue
+<template>
+    <BannerPage label="link" title="友情链接" card :loading="loading">
+        <div class="space-y-5">
+            <!-- 友链列表 -->
+            <LinkList :link-list="linkList" />
+            <!-- 添加友链 -->
+            <AddLink />
+            <!-- 评论 -->
+            <Comment class="mt-30" :type="2" />
+        </div>
+    </BannerPage>
+</template>
+
+<script setup>
+import { onMounted, ref } from 'vue'
+
+import LinkList from './components/LinkList.vue'
+import AddLink from './components/AddLink.vue'
+import Comment from '@/components/comment/Comment.vue'
+import BannerPage from '@/components/BannerPage.vue'
+import api from '@/api'
+
+const loading = ref(true)
+const linkList = ref([])
+
+onMounted(() => {
+    api.getLinks().then((res) => {
+        linkList.value = res.data
+    }).finally(() => {
+        loading.value = false
+    })
+})
+</script>
+
+<style lang="scss" scoped></style>
+```
 
 
 
 
 
 ## 5.4 About 关于我
+
+<img src="./assets/image-20250205110811303.png" alt="image-20250205110811303" style="zoom:50%;" />
+
+这段代码实现了一个“关于我”页面，具体功能如下：
+
+1. **显示作者头像**：
+   - 显示博客作者的头像，头像路径从 `blogConfig.website_avatar` 获取。
+   - 鼠标悬停时旋转 360 度。
+2. **显示文章内容**：
+   - 使用 `marked` 解析 Markdown 内容，将其转换为 HTML。
+   - 使用 `highlight.js` 对代码块进行高亮处理。
+   - 使用 Tailwind CSS 的 `prose` 插件类美化文章内容的排版。
+
+**示例效果**
+
+- 显示作者头像，鼠标悬停时旋转 360 度。
+- 显示关于页面的内容，支持 Markdown 格式和代码高亮。
+
+```vue
+<template>
+    <BannerPage label="about" title="关于我" card>
+        <div class="flex justify-center">
+            <img :src="blogConfig.website_avatar" class="w-25 duration-600 hover:rotate-360" alt="avatar">
+        </div>
+        <div class="flex justify-center">
+            <article class="max-w-none prose prose-truegray">
+                <div v-html="html" />
+            </article>
+        </div>
+    </BannerPage>
+</template>
+
+
+<script setup>
+import { nextTick, onMounted, ref } from 'vue'
+import { marked } from 'marked'
+import hljs from 'highlight.js/lib/core'
+import 'highlight.js/styles/a11y-dark.css'
+import go from 'highlight.js/lib/languages/go'
+import json from 'highlight.js/lib/languages/json'
+import javascript from 'highlight.js/lib/languages/javascript'
+import bash from 'highlight.js/lib/languages/bash'
+
+import BannerPage from '@/components/BannerPage.vue'
+import { useAppStore } from '@/store'
+import api from '@/api'
+
+hljs.registerLanguage('go', go)
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('json', json)
+hljs.registerLanguage('javascript', javascript)
+
+const { blogConfig } = useAppStore()
+const html = ref('')
+
+onMounted(async () => {
+    const { data } = await api.about()
+    // marked 解析 markdown 文本
+    html.value = await marked.parse(data, { async: true })
+    await nextTick()
+    // higlight.js 代码高亮
+    document.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el))
+    // MathJax 渲染公式
+    // window.MathJax.typeset()
+})
+</script>
+
+<style lang="scss" scoped></style>
+```
+
