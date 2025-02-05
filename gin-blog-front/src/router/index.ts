@@ -77,6 +77,34 @@ const basicRoutes = [
       title: '关于我',
     },
   },
+  {
+    name: 'MessageBoard',
+    path: '/message',
+    component: () => import('@/views/message/index.vue'),
+    meta: {
+      title: '留言',
+    },
+  },
+  {
+    name: 'User',
+    path: '/user',
+    component: () => import('@/views/user/index.vue'),
+    meta: {
+      title: '个人中心',
+    },
+  },
+  {
+    name: '404',
+    path: '/404',
+    component: () => import('@/views/error-page/404.vue'),
+  },
+  // 无匹配路由跳转 404
+  {
+    name: 'NotFound',
+    path: '/:pathMatch(.*)*',
+    redirect: '/404',
+    isHidden: true,
+  },
 ]
 
 export const router = createRouter({
