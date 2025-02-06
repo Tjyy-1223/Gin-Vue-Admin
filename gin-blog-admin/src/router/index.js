@@ -1,16 +1,36 @@
 import { createRouter, createWebHistory } from 'vue-router'
-
-import { basicRoutes } from './routes'
+import { useAuthStore, usePermissionStore, useUserStore } from '@/store'
 import { setupRouterGuard } from './guard'
 
-import { useAuthStore, usePermissionStore, useUserStore } from '@/store'
+
+// 基础路由, 无需权限, 总是会注册到最终路由中
+export const basicRoutes = [
+    {
+        name: 'Login',
+        path: '/login',
+        component: () => import('@/views/Login.vue'),
+        isHidden: true,
+        meta: {
+            title: '登录页',
+        },
+    },
+    {
+        name: '404',
+        path: '/404',
+        component: () => import('@/views/error-page/404.vue'),
+        isHidden: true,
+        meta: {
+            title: '错误页',
+        },
+    },
+]
 
 export const router = createRouter({
     history: createWebHistory(import.meta.env.VITE_PUBLIC_PATH), // '/admin'
     routes: basicRoutes,
     scrollBehavior: () => ({ left: 0, top: 0 }),
-})
-
+  })
+  
 
 /**
  * 初始化路由

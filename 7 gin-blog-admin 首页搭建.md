@@ -415,35 +415,12 @@ function createPageTitleGuard(router) {
 
 这段代码的作用是：
 
-1. **定义基础路由**：定义了项目中始终需要的路由，如登录页和404错误页。
-2. **动态加载路由模块**：通过 `import.meta.glob` 动态加载 `@/views` 目录下每个模块的 `route.js` 文件，并将这些路由模块存储到 `asyncRoutes` 数组中。
-3. **动态加载组件**：通过 `import.meta.glob` 动态加载 `@/views` 目录下每个模块的 `index.vue` 文件，供按需加载组件使用。
-4. **模块化和可扩展性**：通过动态加载的方式，使得项目路由和组件的管理更加灵活，便于扩展和维护。
+1. **动态加载路由模块**：通过 `import.meta.glob` 动态加载 `@/views` 目录下每个模块的 `route.js` 文件，并将这些路由模块存储到 `asyncRoutes` 数组中。
+2. **动态加载组件**：通过 `import.meta.glob` 动态加载 `@/views` 目录下每个模块的 `index.vue` 文件，供按需加载组件使用。
+3. **模块化和可扩展性**：通过动态加载的方式，使得项目路由和组件的管理更加灵活，便于扩展和维护。
 
 ```javascript
 import { useAuthStore } from '@/store/modules/auth'
-
-// 基础路由, 无需权限, 总是会注册到最终路由中
-export const basicRoutes = [
-    {
-        name: 'Login',
-        path: '/login',
-        component: () => import('@/views/Login.vue'),
-        isHidden: true,
-        meta: {
-            title: '登录页',
-        },
-    },
-    {
-        name: '404',
-        path: '/404',
-        component: () => import('@/views/error-page/404.vue'),
-        isHidden: true,
-        meta: {
-            title: '错误页',
-        },
-    },
-]
 
 // 前端控制路由: 加载 views 下每个模块的 routes.js 文件
 const routeModules = import.meta.glob('@/views/**/route.js', { eager: true })
@@ -460,14 +437,6 @@ export {
   vueModules,
 }
 ```
-
-**`basicRoutes`**：定义了基础路由，这些路由是项目中始终需要注册的路由，通常包括登录页和404错误页。
-
-- **`name`**：路由的名称，用于在代码中引用路由。
-- **`path`**：路由的路径。
-- **`component`**：路由对应的组件，这里使用了动态加载的方式（`import()`），可以按需加载组件，减少初始加载时间。
-- **`isHidden`**：自定义字段，可能用于标识该路由是否在侧边栏或其他导航中隐藏。
-- **`meta`**：路由元信息，可以存储额外的数据，例如页面标题。
 
 ------
 
@@ -563,18 +532,38 @@ export const useUserStore = defineStore('user', {
 
 ```javascript
 import { createRouter, createWebHistory } from 'vue-router'
-
-import { basicRoutes } from './routes'
+import { useAuthStore, usePermissionStore, useUserStore } from '@/store'
 import { setupRouterGuard } from './guard'
 
-import { useAuthStore, usePermissionStore, useUserStore } from '@/store'
+
+// 基础路由, 无需权限, 总是会注册到最终路由中
+export const basicRoutes = [
+    {
+        name: 'Login',
+        path: '/login',
+        component: () => import('@/views/Login.vue'),
+        isHidden: true,
+        meta: {
+            title: '登录页',
+        },
+    },
+    {
+        name: '404',
+        path: '/404',
+        component: () => import('@/views/error-page/404.vue'),
+        isHidden: true,
+        meta: {
+            title: '错误页',
+        },
+    },
+]
 
 export const router = createRouter({
     history: createWebHistory(import.meta.env.VITE_PUBLIC_PATH), // '/admin'
     routes: basicRoutes,
     scrollBehavior: () => ({ left: 0, top: 0 }),
-})
-
+  })
+  
 
 /**
  * 初始化路由
@@ -680,7 +669,8 @@ export async function resetRouter() {
 ```javascript
 import { defineStore } from 'pinia'
 import { shallowRef } from 'vue'
-import { asyncRoutes, basicRoutes, vueModules } from '@/router/routes'
+import { asyncRoutes, vueModules } from '@/router/routes'
+import { basicRoutes } from '@/router'
 import Layout from '@/layout/index.vue'
 import api from '@/api'
 

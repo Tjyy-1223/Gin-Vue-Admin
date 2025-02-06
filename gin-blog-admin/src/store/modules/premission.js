@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { shallowRef } from 'vue'
-import { asyncRoutes, basicRoutes, vueModules } from '@/router/routes'
+import { asyncRoutes, vueModules } from '@/router/routes'
+import { basicRoutes } from '@/router'
 import Layout from '@/layout/index.vue'
 import api from '@/api'
 
