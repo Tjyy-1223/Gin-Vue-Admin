@@ -2115,3 +2115,17 @@ export default {
 
 
 
+## 7.4 静态资源配置
+
+复制以下的静态资源到项目中：
+
++ public/image
++ public/resource
++ src/assets
+
+至此，后续只需要关注 vue 相关组件的开发即可，主要组件位于下面的位置：
+
++ src/components
++ src/composables
++ src/layout
++ src/views
