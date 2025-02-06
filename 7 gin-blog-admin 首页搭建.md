@@ -677,25 +677,813 @@ export async function resetRouter() {
 
 #### 7.2.1 src/store/modules/premission.js
 
+```javascript
+import { defineStore } from 'pinia'
+import { shallowRef } from 'vue'
+import { asyncRoutes, basicRoutes, vueModules } from '@/router/routes'
+import Layout from '@/layout/index.vue'
+import api from '@/api'
+
+export const usePermissionStore = defineStore('permission', {
+  persist: {
+    key: 'gvb_admin_permission',
+  },
+  state: () => ({
+    accessRoutes: [], // 可访问的路由
+  }),
+  getters: {
+    // 最终可访问路由 = 基础路由 + 可访问的路由
+    routes: state => basicRoutes.concat(state.accessRoutes),
+    // 过滤掉 hidden 的路由作为左侧菜单显示
+    menus: state => state.routes.filter(route => route.name && !route.isHidden),
+  },
+  actions: {
+    // ! 后端生成路由: 后端返回的就是最终路由, 处理成前端格式
+    async generateRoutesBack() {
+      const resp = await api.getUserMenus() // 调用接口获取后端传来的路由
+      this.accessRoutes = buildRoutes(resp.data) // 处理成前端路由格式
+      return this.accessRoutes
+    },
+    // ! 前端控制路由权限: 根据角色过滤路由
+    generateRoutesFront(role = []) {
+      this.accessRoutes = filterAsyncRoutes(asyncRoutes, role)
+      return this.accessRoutes
+    },
+    resetPermission() {
+      this.$reset()
+    },
+  },
+})
+
+// ! 前端路由相关函数
+/**
+ * 前端过滤出有权限访问的路由
+ */
+function filterAsyncRoutes(routes = [], role) {
+  const result = []
+  routes.forEach((route) => {
+    if (hasPermission(route, role)) {
+      const curRoute = { ...route, children: [] }
+      if (route.children?.length) {
+        curRoute.children = filterAsyncRoutes(route.children, role)
+      }
+      else {
+        Reflect.deleteProperty(curRoute, 'children')
+      }
+      result.push(curRoute)
+    }
+  })
+  return result
+}
+
+/**
+ * 前端判断用户角色是否有权限访问路由
+ */
+function hasPermission(route, role) {
+  // 如果该路由不需要权限直接返回 true
+  if (!route.meta?.requireAuth) {
+    return true
+  }
+  // 路由需要的角色
+  const routeRole = route.meta?.role ?? []
+  // 登录用户没有角色 或者 路由没有设置角色判断, 为没有权限
+  if (!role.length || !routeRole.length) {
+    return false
+  }
+  // 路由指定的角色包含任一登录用户角色则判定有权限
+  return role.some(item => routeRole.includes(item))
+}
+
+// ! 后端路由相关函数
+// 根据后端传来数据构建出前端路由
+function buildRoutes(routes = []) {
+  const result = []
+
+  for (const e of routes) {
+    if (e.is_catalogue) {
+      result.push({
+        name: e.name,
+        path: '/', // *
+        component: shallowRef(Layout),
+        isHidden: e.is_hidden,
+        isCatalogue: true, // *
+        redirect: e.redirect,
+        meta: {
+          order: e.order_num,
+        },
+        children: [{
+          name: e.name,
+          path: e.path,
+          component: vueModules[`/src/views${e.component}/index.vue`],
+          meta: {
+            title: e.name,
+            icon: e.icon,
+            keepAlive: e.keep_alive, // TODO:
+            order: 0,
+          },
+        }],
+      })
+    }
+    else {
+      result.push({
+        name: e.name,
+        path: e.path,
+        component: shallowRef(Layout),
+        isHidden: e.is_hidden,
+        redirect: e.redirect,
+        meta: {
+          title: e.name,
+          icon: e.icon,
+          keepAlive: e.keep_alive, // TODO:
+          order: e.order_num,
+        },
+        children: e.children?.map(ee => ({
+          name: ee.name,
+          path: ee.path, // 父路径 + 当前菜单路径
+          component: vueModules[`/src/views${ee.component}/index.vue`],
+          isHidden: ee.is_hidden,
+          meta: {
+            title: ee.name,
+            icon: ee.icon,
+            order: ee.order_num,
+            keepAlive: ee.keep_alive,
+          },
+        })),
+      })
+    }
+  }
+
+  return result
+}
+```
+
+**我们逐个分析其中的每个函数：**
+
+**function filterAsyncRoutes(routes = [], role)**
+
+作用总结
+
+- **过滤路由**: 主要用于根据用户角色权限过滤出用户可以访问的路由。
+- **支持嵌套路由**: 递归遍历路由和子路由，确保所有子路由也被权限过滤。
+- **动态路由控制**: 通过递归和权限判断，动态决定哪些路由应当出现在应用中，哪些应当被隐藏或屏蔽。
+
+```javascript
+// ! 前端路由相关函数
+/**
+ * 前端过滤出有权限访问的路由
+ */
+function filterAsyncRoutes(routes = [], role) {
+  const result = []
+  routes.forEach((route) => {
+    if (hasPermission(route, role)) {
+      const curRoute = { ...route, children: [] }
+      if (route.children?.length) {
+        curRoute.children = filterAsyncRoutes(route.children, role)
+      }
+      else {
+        Reflect.deleteProperty(curRoute, 'children')
+      }
+      result.push(curRoute)
+    }
+  })
+  return result
+}
+```
+
+1. **输入参数**:
+   - `routes`: 传入的路由列表，可以是嵌套的多层路由结构。
+   - `role`: 当前用户的角色数组，用来判断用户是否有权限访问某个路由。
+2. **函数流程**:
+   - 创建一个空数组 `result` 用来保存最终符合权限的路由。
+   - 遍历传入的 routes 数组中的每个路由对象，执行以下操作：
+     - **权限判断**: 调用 `hasPermission(route, role)` 检查当前路由是否符合用户权限。`hasPermission` 函数会基于路由的 `meta.role` 配置和当前用户的 `role` 数组来判断是否有访问权限。
+     - **满足权限条件时处理当前路由**:
+       - 创建一个 `curRoute` 对象，使用 `...route` 创建路由对象的浅拷贝，并清空 `children` 属性（默认为空数组）。
+       - 递归处理子路由:
+         - 如果该路由有子路由（`route.children` 存在且长度大于 0），递归调用 `filterAsyncRoutes` 来处理子路由。
+         - 如果该路由没有子路由，则删除 `children` 属性（`Reflect.deleteProperty(curRoute, 'children')`），因为不需要存储空的 `children`。
+       - 将符合权限的路由（`curRoute`）推入 `result` 数组。
+3. **返回结果**:
+   - 最终，返回 `result` 数组，其中包含了所有符合权限的路由（包括所有符合权限的子路由）。
+
+
+
+------
+
+**function hasPermission(route, role)** 
+
+**权限检查**: 这段代码根据路由的 `meta` 信息和用户的角色来判断是否允许访问某个路由。
+
+- 如果路由不需要权限，用户可以直接访问。
+- 如果路由设置了权限（通过 `requireAuth` 和 `role`），则检查用户的角色是否包含在路由要求的角色列表中。
+
+**灵活性**: 该方法支持多角色配置，即一个路由可以设置多个角色，用户只需要拥有其中一个角色即可访问该路由。
+
+```javascript
+/**
+ * 前端判断用户角色是否有权限访问路由
+ */
+function hasPermission(route, role) {
+  // 如果该路由不需要权限直接返回 true
+  if (!route.meta?.requireAuth) {
+    return true
+  }
+  // 路由需要的角色
+  const routeRole = route.meta?.role ?? []
+  // 登录用户没有角色 或者 路由没有设置角色判断, 为没有权限
+  if (!role.length || !routeRole.length) {
+    return false
+  }
+  // 路由指定的角色包含任一登录用户角色则判定有权限
+  return role.some(item => routeRole.includes(item))
+}
+```
+
+`route`: 当前路由对象，包含该路由的所有信息，例如路由路径、组件、元信息（`meta`）等。
+
+`role`: 当前用户的角色数组，包含用户所拥有的角色。
+
+------
+
+**function buildRoutes(routes = [])**
+
+这段代码主要是将后端返回的路由数据转换成前端 Vue Router 可以使用的格式，使得前端路由配置能够根据后端的权限和配置动态生成。
+
+- **目录类型路由**（`is_catalogue` 为 `true`）会作为父路由，包含至少一个子路由。子路由的组件路径通过 `vueModules` 动态导入。
+- **普通路由**（`is_catalogue` 为 `false`）直接映射为页面路由，可以有多个子路由，子路由的路径和组件也会动态设置。
+- **动态组件加载**: 通过 `vueModules` 动态引入子组件，使得路由的组件路径是灵活的，便于根据后端配置动态生成路由。
+- **路由元信息**（`meta`）包含了每个路由的标题、图标、排序、是否需要缓存等信息，这些可以用于路由管理、菜单生成等场景。
+
+```javascript
+// ! 后端路由相关函数
+// 根据后端传来数据构建出前端路由
+function buildRoutes(routes = []) {
+  const result = []
+
+  for (const e of routes) {
+    if (e.is_catalogue) {
+      result.push({
+        name: e.name,
+        path: '/', // *
+        component: shallowRef(Layout),
+        isHidden: e.is_hidden,
+        isCatalogue: true, // *
+        redirect: e.redirect,
+        meta: {
+          order: e.order_num,
+        },
+        children: [{
+          name: e.name,
+          path: e.path,
+          component: vueModules[`/src/views${e.component}/index.vue`],
+          meta: {
+            title: e.name,
+            icon: e.icon,
+            keepAlive: e.keep_alive, // TODO:
+            order: 0,
+          },
+        }],
+      })
+    }
+    else {
+      result.push({
+        name: e.name,
+        path: e.path,
+        component: shallowRef(Layout),
+        isHidden: e.is_hidden,
+        redirect: e.redirect,
+        meta: {
+          title: e.name,
+          icon: e.icon,
+          keepAlive: e.keep_alive, // TODO:
+          order: e.order_num,
+        },
+        children: e.children?.map(ee => ({
+          name: ee.name,
+          path: ee.path, // 父路径 + 当前菜单路径
+          component: vueModules[`/src/views${ee.component}/index.vue`],
+          isHidden: ee.is_hidden,
+          meta: {
+            title: ee.name,
+            icon: ee.icon,
+            order: ee.order_num,
+            keepAlive: ee.keep_alive,
+          },
+        })),
+      })
+    }
+  }
+
+  return result
+}
+
+```
+
+**下面是对这段代码的具体分析：**
+
+1. **函数作用**:
+
+```javascript
+function buildRoutes(routes = []) {
+  const result = []
+  // ... (逻辑处理)
+  return result
+}
+```
+
+- **`buildRoutes`** 函数接收一个包含路由信息的数组 `routes`（通常是从后端接口返回的路由数据）。
+- 它通过处理这些路由数据，将每一条路由转换成符合 Vue Router 格式的路由配置，最终返回一个新的数组 `result`，其中包含所有构建好的路由。
+
+2. **处理每个路由对象**:
+
+```javascript
+for (const e of routes) {
+  if (e.is_catalogue) { 
+    // 处理目录类型路由
+  } else {
+    // 处理普通路由
+  }
+}
+```
+
+- 遍历传入的路由数据 `routes`，对每个路由对象 `e` 进行处理。
+- **`e.is_catalogue`**: 如果该路由是一个目录类型路由（例如：菜单或导航栏中的父项），会执行不同的处理逻辑，生成具有子路由的父级路由。
+- 否则，将其处理为普通路由。
+
+3. **目录类型路由（`e.is_catalogue` 为 `true`）**:
+
+```javascript
+result.push({
+  name: e.name,
+  path: '/',
+  component: shallowRef(Layout),
+  isHidden: e.is_hidden,
+  isCatalogue: true,
+  redirect: e.redirect,
+  meta: { order: e.order_num },
+  children: [{
+    name: e.name,
+    path: e.path,
+    component: vueModules[`/src/views${e.component}/index.vue`],
+    meta: {
+      title: e.name,
+      icon: e.icon,
+      keepAlive: e.keep_alive,
+      order: 0,
+    },
+  }],
+})
+```
+
+**目录路由**: 目录类型的路由通常是用于组织或分组其他路由的父级路由。对于这种类型的路由：
+
+- `name`: 设置路由的名称，通常用于引用路由。
+- `path: '/'`: 路径设置为 `'/'`，通常表示这是一个父级路由，具有子路由。
+- `component: shallowRef(Layout)`: 使用 `Layout` 作为父级路由的组件，`shallowRef` 是 Vue 3 中的 `ref` 用法，表示该组件引用是浅层的（不包含其子组件的依赖）。
+- `children`: 这个目录路由会有一个子路由（一般只有一个），这个子路由指向具体的页面组件。
+
+子路由配置：
+
+- `name`: 子路由的名称，通常是 `e.name`。
+- `path`: 子路由的路径，直接使用 `e.path`。
+- `component`: 动态导入子路由的组件，路径由 `vueModules` 动态决定。路径形式为 `vueModules['/src/views{e.component}/index.vue']`。
+- `meta`: 包含该路由的元数据，如 `title`（路由标题）、`icon`（路由图标）、`keepAlive`（是否缓存此页面）、`order`（排序）。
+
+4. **普通路由（`e.is_catalogue` 为 `false`）**:
+
+```javascript
+result.push({
+  name: e.name,
+  path: e.path,
+  component: shallowRef(Layout),
+  isHidden: e.is_hidden,
+  redirect: e.redirect,
+  meta: {
+    title: e.name,
+    icon: e.icon,
+    keepAlive: e.keep_alive,
+    order: e.order_num,
+  },
+  children: e.children?.map(ee => ({
+    name: ee.name,
+    path: ee.path,
+    component: vueModules[`/src/views${ee.component}/index.vue`],
+    isHidden: ee.is_hidden,
+    meta: {
+      title: ee.name,
+      icon: ee.icon,
+      order: ee.order_num,
+      keepAlive: ee.keep_alive,
+    },
+  })),
+})
+```
+
+普通路由: 普通路由不属于目录类型，直接用于页面路由。对于这些路由，处理逻辑如下：
+
+- `name`: 路由名称。
+- `path`: 路由的路径。
+- `component: shallowRef(Layout)`: 使用 `Layout` 作为父组件（可能是一个布局组件）。
+- children: 该路由可以有子路由，使用 map遍历 e.children（如果有子路由）。对于每个子路由 ee，会动态构建子路由配置：
+  - `name`: 子路由名称。
+  - `path`: 子路由路径。
+  - `component`: 动态加载子路由组件，路径为 `vueModules['/src/views{ee.component}/index.vue']`。
+  - `meta`: 子路由的元信息（例如标题、图标、缓存配置等）。
+
+5. **返回路由结果**:
+
+```javascript
+return result
+```
+
+最终，函数返回处理好的路由数组 `result`，这些路由已经被转换为 Vue Router 所需的格式，可以直接用来配置路由系统。
+
 
 
 
 
 #### 7.2.2 src/store/modules/tag.js
 
+这个 store 适用于需要标签页管理的应用，特别是那些支持多标签、多页面的后台管理系统。
+
++ **标签管理**: 该 store 实现了一个标签栏系统，允许用户动态添加、删除、关闭标签，并管理标签的状态。
++ **标签刷新**: 提供了刷新标签的功能，模拟标签的刷新效果。
++ **动态路由与标签**: 与路由（通过 `router.push`）和标签（通过 `tags`）密切集成，使得标签和路由的跳转同步更新。
++ **标签持久化**: 通过 `sessionStorage` 实现标签栏数据的持久化，使得页面刷新后标签栏能够恢复
+
+```javascript
+import { nextTick } from 'vue'
+import { defineStore } from 'pinia'
+import { router } from '@/router'
+
+export const useTagStore = defineStore('tag', {
+  persist: {
+    key: 'gvb_admin_tag',
+    paths: ['tags'],
+    storage: window.sessionStorage,
+  },
+  state: () => ({
+    tags: [], // 标签栏的所有标签
+    activeTag: '', // 当前激活的标签 path
+    reloading: true, // 是否正在刷新
+    /**
+     * ! keepAlive 路由的 key, 重新赋值可重置 keepAlive
+     * key 是 route name
+     */
+    aliveKeys: {},
+  }),
+  getters: {
+    // 获取当前激活的标签的索引
+    activeIndex: state => state.tags.findIndex(tag => tag.path === state.activeTag),
+  },
+  actions: {
+    /**
+     * 更新 keepAlive 路由, 让其重新渲染
+     * @param {string} name route name
+     */
+    updateAliveKey(name) {
+      this.aliveKeys[name] = (+new Date())
+    },
+    /**
+     * 设置当前激活的标签
+     * @param {string} path 标签对应的路由路径
+     */
+    async setActiveTag(path) {
+      await nextTick() // 将回调延迟到下次 DOM 更新循环之后执行
+      this.activeTag = path
+    },
+    /**
+     * 设置当前显示的所有标签
+     * @param {string[]} tags 数组
+     */
+    setTags(tags) {
+      this.tags = tags
+    },
+    /**
+     * 添加标签 (不添加白名单中 和 已存在的)
+     * @param {{ name, path, title, icon }} tag 标签对象
+     * 添加新标签: 如果标签已存在（根据 path 判断），则更新该标签；否则，将新标签添加到标签数组中，并激活该标签。
+     */
+    addTag(tag = {}) {
+      const index = this.tags.findIndex(item => item.path === tag.path)
+      if (index !== -1) {
+        this.tags.splice(index, 1, tag)
+      }
+      else {
+        this.setTags([...this.tags, tag])
+      }
+      this.setActiveTag(tag.path)
+    },
+    /**
+     * 移除标签 , 如果只有一个标签, 无法移除
+     * @param {string} path 标签对应的路由路径
+     */
+    removeTag(path) {
+      // 如果关闭的是当前标签
+      if (path === this.activeTag) {
+        if (this.activeIndex === 0) { // 如果是第一个标签, 则选中第二个标签
+          router.push(this.tags[1].path)
+        }
+        else { // 否则选中左边的标签
+          router.push(this.tags[this.activeIndex - 1].path)
+        }
+      }
+      this.setTags(this.tags.filter(tag => tag.path !== path))
+    },
+    /**
+     * 关闭其他标签
+     * @param {string} path
+     */
+    removeOther(path = this.activeTag) {
+      this.setTags(this.tags.filter(tag => tag.path === path))
+      // 如果点击的不是当前标签, 会将当前标签关闭, 那么跳转到第一个标签
+      if (path !== this.activeTag) {
+        router.push(this.tags[0].path) // 关闭其他后只剩一个标签
+      }
+    },
+    /**
+     * 关闭左侧标签
+     * @param {string} path
+     */
+    removeLeft(path) {
+      const curIndex = this.tags.findIndex(item => item.path === path)
+      // 过滤出右边的标签
+      const filterTags = this.tags.filter((item, index) => index >= curIndex)
+      this.setTags(filterTags)
+      // 如果当前浏览的标签被关闭, 打开一个新标签
+      if (!filterTags.find(item => item.path === this.activeTag)) {
+        router.push(filterTags[filterTags.length - 1].path)
+      }
+    },
+    /**
+     * 关闭左侧标签
+     * @param {string} path
+     */
+    removeRight(path) {
+      const curIndex = this.tags.findIndex(item => item.path === path)
+      // 过滤出左边的标签
+      const filterTags = this.tags.filter((item, index) => index <= curIndex)
+      this.setTags(filterTags)
+      // 如果当前浏览的标签被关闭, 打开一个新标签
+      if (!filterTags.find(item => item.path === this.activeTag)) {
+        router.push(filterTags[filterTags.length - 1].path)
+      }
+    },
+    /**
+     * 重置标签
+     */
+    resetTags() {
+      this.$reset()
+    },
+    /**
+     * 刷新页面
+     * @description 效果并非按 F5 刷新整个网页, 而是模拟刷新 (nextTick + 滚动到顶部)
+     */
+    async reloadTag() {
+      window.$loadingBar.start()
+
+      // 配合 v-if="reloadFlag" 实现白屏效果
+      this.reloadFlag = false
+      await nextTick() // 将回调延迟到下次 DOM 更新循环之后执行
+      this.reloadFlag = true
+
+      // 滚动到顶部, 模拟刷新
+      setTimeout(() => {
+        document.documentElement.scrollTo({ left: 0, top: 0 })
+        window.$loadingBar.finish()
+      }, 100)
+    },
+  },
+})
+
+```
+
 
 
 #### 7.2.3 src/store/modules/theme.js
+
+这段代码定义了一个用于管理主题相关状态的 Pinia Store，包括侧边栏折叠状态、水印显示状态和暗色模式状态。通过持久化配置，`collapsed` 和 `watermarked` 状态会在页面刷新后仍然保持。同时，通过 `useDark`，可以动态检测和切换暗色模式。
+
+- **`useDark`**：获取当前主题是否为暗色模式，并将其值赋给 `isDark`。
+- **`defineStore`**：定义了一个名为 `theme-store` 的 Store。
+  - **`persist`**：配置了状态持久化，将 `collapsed` 和 `watermarked` 状态存储到本地存储中，键名为 `gvb_admin_theme`。
+  - **`state`**：定义了三个状态：
+    - **`collapsed`**：布尔值，表示侧边栏是否折叠，初始值为 `false`。
+    - **`watermarked`**：布尔值，表示是否显示水印，初始值为 `false`。
+    - **`darkMode`**：布尔值，表示是否为暗色模式，初始值为 `isDark` 的值。
+  - **`actions`**：定义了三个操作方法：
+    - **`switchWatermark`**：切换水印状态。
+    - **`switchCollapsed`**：切换侧边栏折叠状态。
+    - **`switchDarkMode`**：切换暗色模式状态。
+
+```javascript
+import { defineStore } from 'pinia'
+import { useDark } from '@vueuse/core'
+
+const isDark = useDark()
+export const useThemeStore = defineStore('theme-store', {
+  persist: {
+    key: 'gvb_admin_theme',
+    paths: ['collapsed', 'watermarked'],
+  },
+  state: () => ({
+    collapsed: false, // 侧边栏折叠
+    watermarked: false, // 水印
+    darkMode: isDark, // 黑暗模式
+  }),
+  actions: {
+    switchWatermark() {
+      this.watermarked = !this.watermarked
+    },
+    switchCollapsed() {
+      this.collapsed = !this.collapsed
+    },
+    switchDarkMode() {
+      this.darkMode = !this.darkMode
+    },
+  },
+})
+
+```
+
+
 
 
 
 #### 7.2.4 src/store/modules/auth.js
 
+这段代码定义了一个用于管理用户认证状态的 Pinia Store，主要功能包括：
+
+1. **存储认证令牌（Token）**：通过 `token` 状态存储用户的认证信息，并支持持久化。
+2. **设置 Token**：通过 `setToken` 方法设置用户的认证令牌。
+3. **退出登录**：通过 `logout` 方法主动退出登录，调用后端接口并重置状态。
+4. **强制下线**：通过 `forceOffline` 方法处理用户被强制下线的场景，重置状态。
+5. **重定向到登录页**：通过 `toLogin` 方法将用户重定向到登录页面，并保留当前路由的查询参数。
+6. **重置状态**：通过 `resetLoginState` 方法重置所有与登录相关的状态，包括其他 Store 的状态和路由配置。
+
+这段代码的设计考虑了用户认证的完整流程，包括登录、登出和状态管理，同时通过与其他 Store 和路由的协同操作，确保了应用状态的一致性。
+
+```javascript
+import { unref } from 'vue'
+import { defineStore } from 'pinia'
+import { usePermissionStore, useTagStore, useUserStore } from '@/store'
+import { resetRouter, router } from '@/router'
+import api from '@/api'
+
+export const useAuthStore = defineStore('auth', {
+  persist: {
+    key: 'gvb_admin_auth',
+    paths: ['token'],
+  },
+  state: () => ({
+    token: null,
+  }),
+  actions: {
+    setToken(token) {
+      this.token = token
+    },
+    toLogin() {
+      const currentRoute = unref(router.currentRoute)
+      router.replace({
+        path: '/login',
+        query: currentRoute.query,
+      })
+    },
+    resetLoginState() {
+      useUserStore().$reset()
+      usePermissionStore().$reset()
+      useTagStore().$reset()
+      resetRouter()
+      this.$reset()
+    },
+    /**
+     * 主动退出登录
+     */
+    async logout() {
+      await api.logout()
+      this.resetLoginState()
+      this.toLogin()
+      window.$message.success('您已经退出登录！')
+    },
+    /**
+     * TODO: 被强制退出
+     */
+    async forceOffline() {
+      this.resetLoginState()
+      this.toLogin()
+      window.$message.error('您已经被强制下线！')
+    },
+  },
+})
+```
 
 
 
+#### 7.2.5 src/store/modules/user.js
 
-#### 7.2.5 src/store/modules/theme.js
+这段代码定义了一个用于管理用户信息的 Pinia Store，主要功能包括：
+
+1. **存储用户信息**：通过 `userInfo` 状态存储用户的详细信息，包括 ID、昵称、头像、简介和个人网站。
+2. **获取用户信息**：通过 `getUserInfo` 方法从后端接口获取用户信息，并更新状态。
+3. **计算属性**：通过 `getters` 提供了方便访问用户信息的计算属性，例如 `userId`、`nickname`、`avatar` 等。
+4. **图片路径处理**：通过 `convertImgUrl` 函数处理头像 URL，确保图片能够正确加载。
+
+5. **扩展性**
+
+- **`roles`**：虽然当前代码中 `roles` 字段被注释掉了，但可以通过后端接口返回用户角色信息，并在需要时启用该字段。
+- **错误处理**：在 `getUserInfo` 方法中，通过 `try...catch` 捕获错误，确保在获取用户信息失败时能够正确处理。
+
+这段代码的设计简洁明了，易于扩展和维护，能够很好地满足用户信息管理的需求。
+
+```javascript
+import { defineStore } from 'pinia'
+import { convertImgUrl } from '@/utils'
+import api from '@/api'
+
+// 用户全局变量
+export const useUserStore = defineStore('user', {
+  state: () => ({
+    userInfo: {
+      id: null,
+      nickname: '',
+      avatar: '',
+      intro: '',
+      website: '',
+      // roles: [], // TODO: 后端返回 roles
+    },
+  }),
+  getters: {
+    userId: state => state.userInfo.id,
+    nickname: state => state.userInfo.nickname,
+    intro: state => state.userInfo.intro,
+    website: state => state.userInfo.website,
+    avatar: state => convertImgUrl(state.userInfo.avatar),
+    // roles: state => state.userInfo.roles,
+  },
+  actions: {
+    async getUserInfo() {
+      try {
+        const resp = await api.getUserInfo()
+        this.userInfo = resp.data
+        return Promise.resolve(resp.data)
+      }
+      catch (err) {
+        return Promise.reject(err)
+      }
+    },
+  },
+})
+
+```
+
+
+
+#### 7.2.6 src/store/index.js
+
+这段代码的作用是：
+
+1. **初始化 Pinia**：创建一个 Pinia 实例并将其挂载到 Vue 应用中。
+2. **启用数据持久化**：通过 `pinia-plugin-persistedstate` 插件，使 Pinia Store 的状态能够在页面刷新后仍然保持，解决了数据丢失的问题。
+3. **模块化 Store**：通过导入和导出各个模块化的 Store 文件，实现了状态管理的模块化，便于管理和维护。
+
+```javascript
+import { createPinia } from 'pinia'
+
+// https://github.com/prazdevs/pinia-plugin-persistedstate
+// pinia 数据持久化，解决刷新数据丢失的问题
+import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
+
+export function setupStore(app) {
+  const pinia = createPinia()
+  pinia.use(piniaPluginPersistedstate)
+  app.use(pinia)
+}
+
+export * from './modules/permission'
+export * from './modules/tag'
+export * from './modules/theme'
+export * from './modules/user'
+export * from './modules/auth'
+
+```
+
+同时，及时更新 main.ts 中的方法：
+
+```typescript
+import { createApp } from 'vue'
+import App from './App.vue'
+import { setupRouter } from './router'
+import { setupStore } from './store'
+
+// unocss
+import 'uno.css'
+import '@unocss/reset/tailwind.css'
+
+const app = createApp(App);
+setupStore(app); // 优先级最高
+await setupRouter(app);
+app.mount('#app')
+```
 
 
 
