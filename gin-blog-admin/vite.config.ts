@@ -8,11 +8,12 @@ import { visualizer } from 'rollup-plugin-visualizer'
 
 export default defineConfig((configEnv) => {
   const env = loadEnv(configEnv.mode, process.cwd())
+  console.log('Alias @:', path.resolve(__dirname, 'src'));
   return {
     base: env.VITE_PUBLIC_PATH || '/',
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, 'src'),
+        "@": path.resolve(__dirname, 'src'),
         '~': path.resolve(process.cwd()),
       },
     },
