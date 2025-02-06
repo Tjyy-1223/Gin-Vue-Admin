@@ -1493,22 +1493,625 @@ app.mount('#app')
 
 首先先根据  7.2.4 src/store/modules/auth.js 配置好对应的仓库， 因为要用到其中的 token 来判断当前是否处于登陆状态（鉴权）
 
++ 这段代码通过使用 `axios` 的请求和响应拦截器，统一处理了请求的 `Token` 验证、错误消息显示以及 Token 过期等业务逻辑。
++ 错误处理包括了对 HTTP 状态码和业务逻辑状态码的判断，通过 UI 弹出错误信息，并根据不同的错误状态执行相应的操作（例如跳转登录页或强制下线）。
++ 通过 `request.interceptors` 可以非常方便地对所有请求进行统一管理，提高了代码的可维护性和复用性。
 
+```javascript
+import axios from 'axios'
+import { useAuthStore } from '@/store'
+
+// 创建 axios 实例
+export const request = axios.create({
+  baseURL: import.meta.env.VITE_BASE_API,  // 设置请求的基础 URL（从环境变量中读取）
+  timeout: 12000, // 设置请求的超时时间为 12000 毫秒（12 秒）
+})
+
+// 请求拦截器
+request.interceptors.request.use(
+  // 请求成功拦截
+  (config) => {
+    // 判断该请求是否需要携带 Token，如果不需要，则直接返回 config
+    if (config.noNeedToken) {
+      return config
+    }
+
+    // 获取 token（通常在 store 中存储）
+    const { token } = useAuthStore()
+
+    // 如果 token 存在，则将 token 添加到请求头的 Authorization 字段
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+
+    // 返回修改后的请求配置
+    return config
+  },
+  // 请求失败拦截
+  (error) => {
+    // 请求发生错误时，直接返回拒绝的 Promise
+    return Promise.reject(error)
+  },
+)
+
+// 响应拦截器
+request.interceptors.response.use(
+  // 响应成功拦截
+  (response) => {
+    // 业务信息：从响应中提取数据
+    const responseData = response.data
+    const { code, message, data } = responseData
+
+    // 判断响应中的业务状态码，如果不等于 0 说明业务失败
+    if (code !== 0) {  // 这里的 `0` 是后端约定的成功状态码
+      // 如果存在 data，且 message 和 data 不相等，则拼接错误信息
+      if (data && message !== data) {
+        window.$message.error(`${message} ${data}`)  // 使用 UI 库弹出错误消息
+      } else {
+        window.$message.error(message)  // 使用 UI 库弹出错误消息
+      }
+
+      // 在控制台打印错误信息，便于调试
+      console.error(responseData)
+
+      const authStore = useAuthStore() // 获取认证状态
+
+      // 如果返回的 code 为 1201，则说明 Token 存在问题，跳转到登录页
+      if (code === 1201) {
+        authStore.toLogin() // 跳转到登录页面
+        return
+      }
+
+      // 如果返回的 code 为 1202、1203 或 1207，说明 Token 过期或者被强制下线，执行强制下线操作
+      if (code === 1202 || code === 1203 || code === 1207) {
+        authStore.forceOffline() // 强制用户下线
+        return
+      }
+
+      // 返回 Promise.reject，表示响应失败
+      return Promise.reject(responseData)
+    }
+
+    // 如果业务成功，返回响应数据
+    return Promise.resolve(responseData)
+  },
+  // 响应失败拦截
+  (error) => {
+    // 响应失败，错误通常是由网络问题或服务器问题引起的
+    const responseData = error.response?.data
+    const { message, data } = responseData
+
+    // 如果 HTTP 状态码是 500（服务器错误），显示服务端异常
+    if (error.response.status === 500) {
+      if (message && data) {
+        window.$message.error(`${message} ${data}`)
+      } else {
+        window.$message.error('服务端异常')  // 显示服务端异常错误信息
+      }
+    }
+
+    // 返回 Promise.reject，表示响应失败
+    return Promise.reject(error)
+  },
+)
+
+```
+
+1. **创建 axios 实例**:
+   - `axios.create()` 创建了一个 axios 实例，并配置了基础的 URL (`baseURL`) 和请求超时 (`timeout`)。
+   - `baseURL` 是通过 `import.meta.env.VITE_BASE_API` 动态从环境变量中获取的。这个变量通常存储了 API 服务器的基本 URL。
+   - `timeout` 设置了请求的最大等待时间，如果请求超过这个时间仍没有响应，会自动中止请求。
+2. **请求拦截器**:
+   - 在请求发送之前，首先会检查该请求是否需要携带 Token。如果配置了 `noNeedToken`，说明该请求不需要身份验证。
+   - 如果需要 Token，拦截器会从 `useAuthStore()` 中获取当前的 token（`useAuthStore()` 是 Pinia store 中的认证状态，保存了用户的登录信息）。
+   - 如果 token 存在，则会将其附加到请求头中，格式为 `Authorization: Bearer <token>`。
+   - 返回修改后的 `config`，表示继续进行请求。如果请求失败，直接返回错误。
+3. **响应拦截器**:
+   - 响应成功拦截：当响应到达时，首先检查响应中的  code 是否为 0（假设这是后端规定的成功状态码）。如果不为 0，说明业务失败，触发错误处理。
+     - **错误消息**：如果响应数据中有 `data`，且 `message` 和 `data` 不相等，则合并错误信息显示；否则只显示 `message`。
+     - Token 相关错误处理：根据 code的不同值，进行相应的 Token 错误处理：
+       - `1201`: Token 存在问题，跳转到登录页。
+       - `1202`, `1203`, `1207`: Token 过期或被强制下线，调用 `forceOffline()` 方法强制用户下线。
+     - 返回一个拒绝的 Promise，表明这次请求的业务失败。
+   - **响应失败拦截**：处理 HTTP 错误，比如服务器错误（`500`）时，弹出错误信息。
+4. **请求失败和响应失败**：
+   - 请求失败拦截器用于捕获请求中的错误，例如网络请求中断或请求发送失败。
+   - 响应失败拦截器处理的是网络层面的错误，例如服务器无法响应或响应超时等。
 
 
 
 #### 7.3.1 utils - local.js
 
+- **加密存储**：数据被加密后存储在浏览器的 `localStorage` 中，增强了数据的安全性。
+- **过期控制**：每个存储项都有过期时间，可以自动清除过期数据，避免存储过期信息。
+- **简单的错误处理**：解密和 JSON 解析过程中，如果发生任何错误（如数据损坏或格式错误），返回 `null`。
+- **存储管理**：提供了常用的 `get`, `set`, `remove`, `clear` 等方法，封装了 `localStorage` 的操作，简化了接口调用。
+
+```javascript
+const CryptoSecret = '__SecretKey__'  // 用于加密的密钥
+
+/**
+ * 存储序列化后的数据到 LocalStorage
+ * @param {string} key - 存储的键
+ * @param {any} value - 存储的值，可以是任何类型的对象，会被序列化为 JSON
+ * @param {number} expire - 数据的过期时间，单位为秒，默认 7 天
+ */
+export function setLocal(key, value, expire = 60 * 60 * 24 * 7) {
+  // 创建一个包含 value、存储时间和过期时间的对象
+  const data = JSON.stringify({
+    value,  // 存储的数据
+    time: Date.now(),  // 当前时间戳，表示存储的时间
+    expire: expire ? new Date().getTime() + expire * 1000 : null,  // 计算过期时间，默认不设置过期时间
+  })
+
+  // 将序列化后的数据加密后存储到 localStorage 中
+  window.localStorage.setItem(key, encrypto(data))  // 使用 encrypto 函数加密数据
+}
+
+/**
+ * 从 LocalStorage 中获取数据，解密后反序列化，并检查是否过期
+ * @param {string} key - 存储的键
+ * @returns {any} - 解密并且未过期的值，如果过期则返回 null
+ */
+export function getLocal(key) {
+  // 获取加密后的数据
+  const encryptedVal = window.localStorage.getItem(key)
+  
+  // 如果数据存在，则进行解密
+  if (encryptedVal) {
+    const val = decrypto(encryptedVal)  // 解密数据
+    const { value, expire } = JSON.parse(val)  // 反序列化解密后的数据
+
+    // 检查是否已过期，如果未过期则返回存储的值
+    if (!expire || expire > new Date().getTime()) {
+      return value
+    }
+  }
+
+  // 如果数据已过期，则移除对应的 localStorage 项
+  removeLocal(key)
+  return null
+}
+
+/**
+ * 从 LocalStorage 中移除指定的键值对
+ * @param {string} key - 存储的键
+ */
+export function removeLocal(key) {
+  window.localStorage.removeItem(key)  // 使用 localStorage 的 removeItem 方法移除项
+}
+
+/**
+ * 清空所有存储在 LocalStorage 中的数据
+ */
+export function clearLocal() {
+  window.localStorage.clear()  // 使用 localStorage 的 clear 方法清空所有数据
+}
+
+/**
+ * 加密数据: 使用 Base64 加密
+ * @param {any} data - 需要加密的数据
+ * @returns {string} - 加密后的字符串
+ */
+function encrypto(data) {
+  // 将数据转为 JSON 字符串
+  const newData = JSON.stringify(data)
+
+  // 使用 Base64 编码并在加密数据前加上一个密钥（防止直接暴力解密）
+  const encryptedData = btoa(CryptoSecret + newData)  // `btoa` 是浏览器内置的 Base64 编码方法
+  return encryptedData
+}
+
+/**
+ * 解密数据: 使用 Base64 解密
+ * @param {string} cipherText - 加密后的密文
+ * @returns {any} - 解密后的原始数据，如果解密失败则返回 null
+ */
+function decrypto(cipherText) {
+  // 使用 Base64 解码
+  const decryptedData = atob(cipherText)  // `atob` 是浏览器内置的 Base64 解码方法
+
+  // 移除加密时添加的密钥
+  const originalText = decryptedData.replace(CryptoSecret, '')  // 将密钥从解密的文本中去除
+
+  // 尝试将解密后的文本解析为 JSON 对象
+  try {
+    const parsedData = JSON.parse(originalText)  // 解析 JSON 数据
+    return parsedData  // 返回解密后的数据
+  }
+  catch (error) {
+    return null  // 如果解密过程中出现错误，则返回 null
+  }
+}
+```
+
+需要注意的是，虽然 Base64 可以防止数据直接暴力破解，但它并不是一种安全的加密方式。在存储敏感数据时，应该考虑使用更强的加密算法（如 AES 等）。
+
+1. **加密和解密机制**：
+   - 这段代码使用了简单的 Base64 编码（`btoa` 和 `atob`）来进行加密和解密操作。加密的关键在于将密钥 `CryptoSecret` 作为前缀加到数据上，从而避免被暴力破解。
+   - `encrypto` 函数将数据序列化为字符串，并将其与一个固定的密钥 `CryptoSecret` 组合，然后使用 Base64 进行编码。`decrypto` 函数则对 Base64 进行解码，并去掉密钥部分，最终返回解密后的数据。
+2. **数据过期处理**：
+   - 在存储数据时，`setLocal` 函数允许设置数据的过期时间。该时间以秒为单位，默认为 7 天。
+   - 在获取数据时，`getLocal` 会检查数据的过期时间，如果数据已经过期，则删除该数据并返回 `null`。
+3. **本地存储操作**：
+   - 通过 `window.localStorage`，数据可以存储在浏览器的本地存储中，这使得应用能够跨页面、跨刷新保持用户的状态或数据。
+   - 本地存储的数据具有持久性，即便关闭浏览器或重新启动，数据也不会丢失，直到被明确地清除。
+   - `removeLocal` 和 `clearLocal` 提供了清除本地存储数据的功能。
+4. **功能简述**：
+   - `setLocal`: 用于将序列化的数据加密后存储到本地存储，并设置过期时间。
+   - `getLocal`: 从本地存储获取数据并解密，返回值会检查是否过期，若已过期则删除并返回 `null`。
+   - `removeLocal`: 移除指定的本地存储项。
+   - `clearLocal`: 清空所有存储的数据。
+
+
+
 
 
 #### 7.3.1 utils - naiveTool.js
 
+- 这段代码主要围绕 `Naive UI` 的 API 进行了封装，简化了在项目中使用 `message`, `dialog`, `notification`, `loadingBar` 等功能的方式。
+- 通过全局挂载这些 API，开发者可以在任何地方快速访问。
+- 消息系统和对话框系统进行了自定义封装，添加了如定时销毁消息、更新消息内容等功能。
+- 提供了对主题的动态切换支持，并且通过添加 meta 标签解决了 `Naive UI` 和 `Unocss` 样式冲突的问题。
+
+```javascript
+import { computed } from 'vue'
+import * as NaiveUI from 'naive-ui'
+import { useThemeStore } from '@/store'
+import themes from '@/assets/themes'
+
+function setupMessage(NMessage) {
+    class Message {
+        static instance // 单例实例
+        message // 用于存储消息实例
+        removeTimer // 用于存储移除定时器
+
+        constructor() {
+            // 如果实例已存在，直接返回实例
+            if (Message.instance) {
+                return Message.instance
+            }
+            Message.instance = this
+            this.message = {}
+            this.removeTimer = {}
+        }
+
+        // 销毁指定消息，延时一定时间后执行
+        destroy(key, duration = 200) {
+            setTimeout(() => {
+                if (this.message[key]) {
+                    this.message[key].destroy()  // 销毁消息
+                    delete this.message[key]     // 删除消息记录
+                }
+            }, duration)
+        }
+
+        // 延时移除消息，若消息已存在则清除定时器重新计时
+        removeMessage(key, duration = 5000) {
+            this.removeTimer[key] && clearTimeout(this.removeTimer[key])  // 清除之前的定时器
+            this.removeTimer[key] = setTimeout(() => {
+                this.message[key]?.destroy()  // 超时后销毁消息
+            }, duration)
+        }
+
+        // 根据类型和选项展示消息
+        showMessage(type, content, option = {}) {
+            if (Array.isArray(content)) {
+                // 如果 content 是数组，遍历并显示每一条消息
+                return content.forEach(msg => NMessage[type](msg, option))
+            }
+
+            // 如果没有指定 key，则直接显示消息
+            if (!option.key) {
+                return NMessage[type](content, option)
+            }
+
+            // 获取当前 key 对应的消息
+            const currentMessage = this.message[option.key]
+            if (currentMessage) {
+                // 如果消息已存在，更新其类型和内容
+                currentMessage.type = type
+                currentMessage.content = content
+            }
+            else {
+                // 如果消息不存在，创建新的消息实例
+                this.message[option.key] = NMessage[type](content, {
+                    ...option,
+                    duration: 0, // 防止自动销毁
+                    onAfterLeave: () => {
+                        delete this.message[option.key]  // 销毁后删除消息实例
+                    },
+                })
+            }
+            // 设置消息移除定时器
+            this.removeMessage(option.key, option.duration)
+        }
+
+        // 不同类型的消息显示方法封装
+        loading(content, option = { duration: 0 }) {
+            this.showMessage('loading', content, option)
+        }
+
+        success(content, option = {}) {
+            this.showMessage('success', content, option)
+        }
+
+        error(content, option = {}) {
+            this.showMessage('error', content, option)
+        }
+
+        info(content, option = {}) {
+            this.showMessage('info', content, option)
+        }
+
+        warning(content, option = {}) {
+            this.showMessage('warning', content, option)
+        }
+    }
+
+    return new Message()  // 返回实例化的消息对象
+}
+
+function setupDialog(NDialog) {
+    // 修改 NDialog 的 confirm 方法
+    NDialog.confirm = function (option = {}) {
+        const showIcon = !!(option.title)  // 如果有标题，则显示图标
+        return NDialog[option.type || 'warning']({
+            showIcon,  // 是否显示图标
+            positiveText: '确定',  // 确认按钮文字
+            negativeText: '取消',  // 取消按钮文字
+            onPositiveClick: option.confirm,  // 点击确认按钮的回调
+            onNegativeClick: option.cancel,  // 点击取消按钮的回调
+            onMaskClick: option.cancel,  // 点击遮罩层的回调
+            ...option,  // 合并额外的配置
+        })
+    }
+    return NDialog
+}
+
+/**
+ * 挂载 NaiveUI API
+ */
+export function setupNaiveDiscreteApi() {
+    const themeStore = useThemeStore()  // 获取主题 store
+    const configProviderProps = computed(() => ({
+        theme: themeStore.darkMode ? NaiveUI.darkTheme : undefined,  // 根据主题状态切换暗黑模式
+        themeOverrides: themes.themeOverrides,  // 主题自定义覆盖
+    }))
+
+    // 创建 Naive UI 的离散 API 实例
+    const { message, dialog, notification, loadingBar } = NaiveUI.createDiscreteApi(
+        ['message', 'dialog', 'notification', 'loadingBar'],
+        { configProviderProps },
+    )
+
+    // 挂载到全局对象上，方便在其他地方访问
+    window.$loadingBar = loadingBar
+    window.$notification = notification
+    window.$message = setupMessage(message)  // 初始化消息系统
+    window.$dialog = setupDialog(dialog)    // 初始化对话框系统
+}
+
+/**
+ * 解决 naive-ui 和 unocss 样式冲突
+ */
+export function setupNaiveUnocss() {
+    const meta = document.createElement('meta')  // 创建一个 meta 标签
+    meta.name = 'naive-ui-style'  // 设置标签的 name 属性
+    document.head.appendChild(meta)  // 将标签添加到文档的头部
+}
+```
+
 
 
 #### 7.3.1 utils - index.js
+
+执行 pnpm add naive-ui
+
+这段代码包含了常见的前端工具函数，能够有效地处理一些常见任务，比如：
+
+- **图片路径转换**：将相对路径转换为完整路径，支持网络图片和服务器上的图片。
+- **日期格式化**：通过 `dayjs` 格式化日期，易于自定义。
+- **图标渲染**：使用 `Naive UI` 和 `Iconify` 渲染图标，支持图标大小和样式的自定义。
+- **文件下载：通过生成 `Blob` 和临时链接来触发文件下载，不依赖服务器。**
+
+整体而言，这段代码封装了一些常用的实用函数，简化了应用程序中的常见操作。
+
+```javascript
+import { h } from 'vue'
+import { Icon } from '@iconify/vue'
+import { NIcon } from 'naive-ui'
+import dayjs from 'dayjs'
+
+export * from './http'
+export * from './local'
+export * from './naiveTool'
+
+// 相对图片地址 => 完整的图片路径, 用于本地文件上传
+// 如果包含 http 说明是 Web 图片资源
+// 否则是服务器上的图片，需要拼接服务器路径
+const SERVER_URL = import.meta.env.VITE_SERVER_URL
+export function convertImgUrl(imgUrl) {
+  if (!imgUrl) {
+    return 'http://dummyimage.com/400x400'
+  }
+  // 网络资源
+  if (imgUrl.startsWith('http')) {
+    return imgUrl
+  }
+  return `${SERVER_URL}/${imgUrl}`
+}
+
+/**
+ * 格式化时间
+ */
+export function formatDate(date = undefined, format = 'YYYY-MM-DD') {
+  return dayjs(date).format(format)
+}
+
+/**
+ * 使用 NIcon 渲染图标
+ */
+export function renderIcon(icon, props = { size: 12 }) {
+  return () => h(NIcon, props, { default: () => h(Icon, { icon }) })
+}
+
+// 前端导出, 传入文件内容和文件名称
+export function downloadFile(content, fileName) {
+  const aEle = document.createElement('a') // 创建下载链接
+  aEle.download = fileName // 设置下载的名称
+  aEle.style.display = 'none'// 隐藏的可下载链接
+  // 字符内容转变成 blob 地址
+  const blob = new Blob([content])
+  aEle.href = URL.createObjectURL(blob)
+  // 绑定点击时间
+  document.body.appendChild(aEle)
+  aEle.click()
+  // 然后移除
+  document.body.removeChild(aEle)
+}
+```
+
+其中，需要注意的函数为 downloadFile(content, fileName)
+
+**目的**：实现文件的下载功能，允许将文件内容传给浏览器，触发文件下载。
+
+**实现**：
+
+1. 创建一个 `<a>` 元素，设置 `download` 属性为指定的文件名。
+2. 将内容 `content` 转换为 `Blob`，并生成一个临时的 URL。
+3. 将 `<a>` 元素添加到页面中并模拟点击，触发文件下载。
+4. 下载完成后，移除 `<a>` 元素。
 
 
 
 #### 7.3.5 api.js
 
 建立 api 提供对应的后端方法接口， 如下：
+
+**请求方法封装**：
+
+- 这段代码主要使用了 `request` 来封装所有的 HTTP 请求。每个接口请求都是通过 `request.get`、`request.post`、`request.put` 等方法发送的，参数中通常包含请求的数据或查询参数。
+
+**功能模块化**：
+
+- 该模块将各种功能（如文章、分类、标签、留言、评论、用户等）按模块化方式进行组织，每个功能点都有其独立的接口方法。这种组织方式使得代码清晰易维护。
+
+**接口方法设计**：
+
+- 每个接口方法都有对应的 RESTful 风格，如 `get*` 获取资源，`saveOrUpdate*` 用于创建或更新，`delete*` 删除资源等。
+- 一些方法接受 `params` 和 `data` 参数（例如 `getArticles`、`saveOrUpdateArticle`），这些参数可以用于传递查询条件或者数据内容。
+
+**权限管理**：
+
+- 权限管理是该代码中的一个重点部分，包括菜单、角色、资源的管理，可以很方便地进行增、删、改、查等操作。
+
+**用户管理**：
+
+- 用户管理接口丰富，支持用户信息查询、更新、禁用、在线状态获取等操作，还可以强制下线某个用户。
+
+**博客设置**：
+
+- 包含博客的一些设置接口，如获取和更新博客配置、关于页面的内容等。
+
+```javascript
+import { request } from '@/utils'
+
+export default {
+  // refreshToken: () => request.post('/auth/refreshToken', null, { noNeedTip: true }),
+  report: () => request.post('/report'), // 上报用户信息
+  getHomeInfo: () => request.get('/home'), // 获取首页信息
+  login: ({ username, password }) => request.post('/login', { username, password }, { noNeedToken: true }),
+  logout: () => request.get('/logout'),
+
+  // 文章相关接口
+  getArticles: (params = {}) => request.get('/article/list', { params }),
+  getArticleById: id => request.get(`/article/${id}`),
+  saveOrUpdateArticle: data => request.post('/article', data),
+  deleteArticle: (data = []) => request.delete('/article', { data }), // 物理删除
+  softDeleteArticle: (ids, is_delete) => request.put('/article/soft-delete', { ids, is_delete }), // 软删除
+  updateArticleTop: (id, is_top) => request.put('/article/top', { id, is_top }), // 修改文章置顶
+  exportArticles: (data = []) => request.post('/article/export', data), // 导出文章
+  importArticles: data => request.post('/article/import', data), // 导入文章
+
+  // 分类相关接口
+  getCategorys: (params = {}) => request.get('/category/list', { params }),
+  saveOrUpdateCategory: data => request.post('/category', data),
+  deleteCategory: (data = []) => request.delete('/category', { data }),
+  getCategoryOption: () => request.get('/category/option'),
+
+  // 标签相关接口
+  getTags: (params = {}) => request.get('/tag/list', { params }),
+  saveOrUpdateTag: data => request.post('/tag', data),
+  deleteTag: (data = []) => request.delete('/tag', { data }),
+  getTagOption: () => request.get('/tag/option'),
+
+  // 留言相关接口
+  getMessages: (params = {}) => request.get('/message/list', { params }),
+  deleteMessages: (data = []) => request.delete('/message', { data }),
+  updateMessageReview: (ids, is_review) => request.put('/message/review', { ids, is_review }),
+
+  // 评论相关接口
+  getComments: (params = {}) => request.get('/comment/list', { params }),
+  deleteComments: (data = []) => request.delete('/comment', { data }),
+  updateCommentReview: (ids, is_review) => request.put('/comment/review', { ids, is_review }),
+
+  // 友链相关接口
+  getLinks: (params = {}) => request.get('/link/list', { params }),
+  deleteLinks: (data = []) => request.delete('/link', { data }),
+  saveOrUpdateLink: data => request.post('/link', data),
+  // 日志相关接口
+  getOperationLogs: (params = {}) => request.get('/operation/log/list', { params }),
+  deleteOperationLogs: (data = []) => request.delete('/operation/log', { data }),
+
+  // 用户相关接口
+  getUserInfo: () => request.get('/user/info'),
+  updateCurrent: data => request.put('/user/current', data), // 更新当前用户信息
+  updateCurrentPassword: data => request.put('/user/current/password', data), // 修改当前用户密码
+  getUsers: (params = {}) => request.get('/user/list', { params }),
+  updateUser: data => request.put('/user', data),
+  updateUserDisable: (id, is_disable) => request.put('/user/disable', {
+    id,
+    is_disable,
+  }),
+  getOnlineUsers: (params = { keyword: '' }) => request.get('/user/online', { params }), // 在线用户列表
+  forceOfflineUser: id => request.post(`/user/offline/${id}`), // 强制离线
+
+  // 博客设置相关接口
+  getConfig: () => request.get('/config'),
+  updateConfig: data => request.patch('/config', data),
+  // getBlogConfig: () => request.get('/setting/blog-config'),
+  // updateBlogConfig: data => request.put('/setting/blog-config', data),
+  getAbout: () => request.get('/setting/about'),
+  updateAbout: data => request.put('/setting/about', data),
+
+  // 权限管理相关接口
+  // 菜单
+  getUserMenus: () => request.get('/menu/user/list'), // 获取当前用户的菜单
+  getMenus: (params = {}) => request.get('/menu/list', { params }),
+  saveOrUpdateMenu: data => request.post('/menu', data),
+  deleteMenu: id => request.delete(`/menu/${id}`),
+  getMenuOption: () => request.get('/menu/option'),
+  // 资源
+  getResources: (params = {}) => request.get('/resource/list', { params }),
+  saveOrUpdateResource: data => request.post('/resource', data),
+  deleteResource: id => request.delete(`/resource/${id}`),
+  updateResourceAnonymous: data => request.put('/resource/anonymous', data),
+  getResourceOption: () => request.get('/resource/option'),
+  // 角色
+  getRoles: (params = {}) => request.get('/role/list', { params }),
+  saveOrUpdateRole: data => request.post('/role', data),
+  deleteRole: (data = []) => request.delete('/role', { data }),
+  getRoleOption: () => request.get('/role/option'),
+
+  // 页面相关接口
+  getPages: () => request.get('/page/list'),
+  saveOrUpdatePage: data => request.post('/page', data),
+  deletePage: (data = []) => request.delete('/page', { data }),
+}
+```
+
+
+
+
+

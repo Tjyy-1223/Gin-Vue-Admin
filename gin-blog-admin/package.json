@@ -17,6 +17,7 @@
     "easy-typer-js": "^2.1.0",
     "highlight.js": "^11.11.1",
     "marked": "^15.0.6",
+    "naive-ui": "^2.41.0",
     "nprogress": "^0.2.0",
     "pinia": "^2.3.1",
     "pinia-plugin-persistedstate": "^4.2.0",
