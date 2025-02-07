@@ -694,7 +694,878 @@ export default {
 
 ## 9.4 Article 相关界面搭建
 
+### 9.4.1 route.js
 
+
+
+### 9.4.2 category/index.js
+
+#### 1 CommonPage.vue
+
+src/components/common/CommonPage.vue
+
+这个组件的目的是封装一个具有可选页头和页脚的页面结构。通过插槽和属性灵活控制头部内容、操作按钮和是否显示页脚。它使用了 Vue 3 的 `script setup` 和 `naive-ui` 组件库来构建简洁、可复用的页面结构。
+
+如果你需要进一步的优化或自定义，可能会根据需求调整插槽的内容或样式。
+
+```vue
+<template>
+    <AppPage :show-footer="showFooter">
+        <header v-if="showHeader" class="mb-3.5 min-h-[45px] flex items-center justify-between px-1">
+            <slot v-if="$slots.header" name="header" />
+            <template v-else>
+                <h2 class="text-2xl text-[#333] font-normal dark:text-[#ccc]">
+                    {{ title || $route.meta?.title }}
+                </h2>
+                <div class="space-x-5">
+                    <slot name="action" />
+                </div>
+            </template>
+        </header>
+        <NCard class="flex-1">
+            <slot />
+        </NCard>
+    </AppPage>
+</template>
+
+<script setup>
+import { NCard } from 'naive-ui'
+import AppPage from './AppPage.vue'
+
+defineProps({
+    showFooter: { type: Boolean, default: false },
+    showHeader: { type: Boolean, default: true },
+    title: { type: String, default: undefined },
+})
+</script>
+
+<style lang="scss" scoped></style>
+```
+
+
+
+#### 2 CrudModal.vue
+
+**src/components/crud/CrudModal.vue**
+
+**这段代码定义了一个模态框组件，具有以下特点：**
+
+- 支持自定义宽度、标题、按钮文本以及显示/隐藏控制。
+- 使用了 Naive UI 的 `NModal` 和 `NButton` 组件来实现模态框和按钮。
+- 支持插槽，允许父组件自定义模态框内容或底部按钮。
+- 通过 `v-model` 和事件 (`update:visible`, `save`) 处理与父组件的交互。
+
+你可以通过传递不同的属性来控制模态框的显示、内容、按钮文本等内容，并能通过事件与父组件进行交互。
+
+```vue
+<template>
+    <NModal v-model:show="show" :style="{ width }" preset="card" :title="title" size="huge" :bordered="false">
+        <slot />
+        <template v-if="showFooter" #footer>
+            <footer class="flex justify-end space-x-5">
+                <slot name="footer">
+                    <NButton @click="show = false">
+                        {{ cancelText }}
+                    </NButton>
+                    <NButton :loading="loading" type="primary" @click="emit('save')">
+                        {{ okText }}
+                    </NButton>
+                </slot>
+            </footer>
+        </template>
+    </NModal>
+</template>
+
+
+<script setup>
+import { computed } from 'vue'
+import { NButton, NModal } from 'naive-ui'
+
+const props = defineProps({
+    visible: { type: Boolean, required: true },
+    width: { type: String, default: '600px' },
+    title: { type: String, default: '' },
+    showFooter: { type: Boolean, default: true },
+    loading: { type: Boolean, default: false },
+    cancelText: { type: String, default: '取消' },
+    okText: { type: String, default: '确定' },
+})
+
+const emit = defineEmits(['update:visible', 'save'])
+
+const show = computed({
+    get: () => props.visible,
+    set: v => emit('update:visible', v),
+})
+</script>
+
+<style lang="scss" scoped></style>
+```
+
+
+
+#### 3 CrudTable.vue
+
+src/components/crud/CrudTable.vue
+
+这段代码构建了一个带有查询栏、表格展示、分页、重置、搜索、和导出功能的 Vue 3 组件。通过与父组件的交互，支持动态查询、数据更新、行选择和导出操作。该组件非常适用于需要展示大量数据并提供灵活操作的场景。
+
+1. **分页和远程请求**：
+   - 支持前端分页和后端分页，根据 `remote` 和 `isPagination` 控制分页行为。
+2. **重置和搜索**：
+   - 提供了搜索和重置功能，能够根据查询条件刷新表格数据。
+3. **导出功能**：
+   - 支持导出表格数据为 Excel 文件，使用 `xlsx` 库实现。
+4. **事件交互**：
+   - 通过 `emit` 向父组件传递更新的数据或事件（例如更新查询条件、选中行、排序等）。
+
+```vue
+<template>
+    <!-- 如果插槽 queryBar 存在，则渲染查询栏 -->
+    <div v-if="$slots.queryBar"
+        class="mb-7 min-h-[60px] flex items-start justify-between border border-gray-200 border-gray-400 rounded-2 border-solid bg-gray-50 p-3.5 dark:bg-black dark:bg-opacity-5">
+
+        <!-- 使用 Naive UI 的 NSpace 来布局查询栏，设置间距 -->
+        <NSpace wrap :size="[35, 15]">
+            <!-- 渲染插槽 queryBar，允许父组件自定义查询条件部分 -->
+            <slot name="queryBar" />
+        </NSpace>
+
+        <!-- 按钮区域，包含重置和搜索按钮 -->
+        <div class="flex-shrink-0 space-x-4">
+            <!-- 重置按钮，点击时触发 handleReset 方法 -->
+            <NButton ghost type="primary" @click="handleReset">
+                <template #icon>
+                    <!-- 重置按钮的图标 -->
+                    <i class="i-lucide:rotate-ccw" />
+                </template>
+                重置
+            </NButton>
+
+            <!-- 搜索按钮，点击时触发 handleSearch 方法 -->
+            <NButton type="primary" @click="handleSearch">
+                <template #icon>
+                    <!-- 搜索按钮的图标 -->
+                    <i class="i-fe:search" />
+                </template>
+                搜索
+            </NButton>
+
+            <!-- TODO: 未来可以添加额外的插槽，允许用户自定义其他按钮 -->
+        </div>
+    </div>
+
+    <NDataTable :remote="remote" :loading="loading" :scroll-x="scrollX" :columns="columns" :data="tableData"
+        :row-key="(row) => row[rowKey]" :single-line="singleLine" :pagination="isPagination ? pagination : false"
+        :checked-row-keys="selections" @update:checked-row-keys="onChecked" @update:page="onPageChange"
+        @update:sorter="onSorterChange" />
+
+</template>
+
+
+<script setup>
+// 导入 Vue 和 Naive UI 的相关模块
+import { nextTick, reactive, ref } from 'vue'
+import { NButton, NDataTable, NSpace } from 'naive-ui'
+import { utils, writeFile } from 'xlsx'
+
+// 定义接收的 props 参数
+const props = defineProps({
+    /** 是否不设定列的分割线 */
+    singleLine: { type: Boolean, default: false },
+    /** true: 后端分页 false: 前端分页 */
+    remote: { type: Boolean, default: true },
+    /** 是否分页 */
+    isPagination: { type: Boolean, default: true },
+    /** 表格内容的横向宽度 */
+    scrollX: { type: Number, default: 1200 },
+    /** 主键 name */
+    rowKey: { type: String, default: 'id' },
+    /** 需要展示的列 */
+    columns: { type: Array, required: true },
+    /** queryBar 中的参数 */
+    queryItems: {
+        type: Object,
+        default() { return {} },
+    },
+    /** 补充参数（可选） */
+    extraParams: {
+        type: Object,
+        default() { return {} },
+    },
+    /** 获取数据的请求 API */
+    getData: {
+        type: Function,
+        required: true,
+    },
+})
+
+// 定义组件需要触发的事件
+const emit = defineEmits(['update:queryItems', 'checked', 'dataChange', 'sorterChange'])
+
+// 定义表格的加载状态、选中行、表格数据等响应式变量
+const loading = ref(false) // 表示是否正在加载数据
+const selections = ref([]) // 存储当前选中的行的 rowKey（主键）
+const tableData = ref([]) // 存储表格的数据
+const initQuery = { ...props.queryItems } // 初始化查询条件
+
+// 分页配置，控制分页行为
+const pagination = reactive({
+    page: 1, // 当前页
+    pageSize: 10, // 每页条数
+    showSizePicker: true, // 是否显示选择每页多少条的选项
+    pageSizes: [5, 10, 20], // 每页条数的选择范围
+    // 分页变化时触发
+    onChange: (page) => {
+        pagination.page = page
+        handleQuery()
+    },
+    // 页面大小变化时触发
+    onUpdatePageSize: (pageSize) => {
+        pagination.page = 1 // 重置为第一页
+        pagination.pageSize = pageSize
+        handleQuery()
+    },
+    // 显示分页信息的前缀
+    prefix({ itemCount }) {
+        return `共 ${itemCount} 条`
+    },
+})
+
+// 请求数据的核心方法
+async function handleQuery() {
+    selections.value = [] // 重置选中的行
+
+    try {
+        loading.value = true // 开始加载数据
+        let paginationParams = {}
+        // 如果启用了分页并且是远程分页，则加入分页参数
+        if (props.isPagination && props.remote) {
+            paginationParams = {
+                page_num: pagination.page,
+                page_size: pagination.pageSize,
+            }
+        }
+        // 调用父组件传递的 getData 函数请求数据
+        const { data } = await props.getData({
+            ...props.queryItems, // 当前的查询条件
+            ...props.extraParams, // 补充的额外参数
+            ...paginationParams, // 分页参数
+        })
+        // 更新表格数据
+        tableData.value = data?.page_data || data
+        pagination.itemCount = data?.total ?? data.length // 更新总数据条数
+    }
+    catch (error) {
+        tableData.value = [] // 请求失败时清空表格数据
+        pagination.itemCount = 0 // 重置数据总数
+    }
+    finally {
+        emit('dataChange', tableData.value) // 通知父组件表格数据发生变化
+        loading.value = false // 结束加载状态
+    }
+}
+
+// 搜索按钮点击时的处理函数
+function handleSearch() {
+    pagination.page = 1 // 搜索时回到第一页
+    handleQuery() // 重新请求数据
+}
+
+// 重置按钮点击时的处理函数
+async function handleReset() {
+    const queryItems = { ...props.queryItems } // 拷贝查询条件
+    // 重置查询条件中的所有字段为 null
+    for (const key in queryItems) {
+        queryItems[key] = null // 注意类型问题，可能需要根据实际类型来重置
+    }
+    // 更新查询条件
+    emit('update:queryItems', { ...queryItems, ...initQuery })
+    await nextTick() // 等待 DOM 更新
+    pagination.page = 1 // 回到第一页
+    handleQuery() // 重新请求数据
+}
+
+// 分页变化时的处理函数
+function onPageChange(currentPage) {
+    pagination.page = currentPage // 更新当前页
+    props.remote && handleQuery() // 如果是远程分页，则重新请求数据
+}
+
+// 表格行选择变化时的处理函数
+function onChecked(rowKeys) {
+    selections.value = rowKeys // 更新选中的行
+    // 如果表格有选择列，则触发父组件的 'checked' 事件
+    if (props.columns.some(item => item.type === 'selection')) {
+        emit('checked', rowKeys)
+    }
+}
+
+// 排序变化时的处理函数
+function onSorterChange(sorter) {
+    emit('sorterChange', sorter) // 通知父组件排序变化
+}
+
+// 导出功能，导出当前表格数据为 Excel 文件
+function handleExport(columns = props.columns, data = tableData.value) {
+    if (!data?.length) {
+        return window.$message.warning('没有数据') // 如果没有数据，则提示
+    }
+    // 过滤掉没有标题或者设置了隐藏的列
+    const columnsData = columns.filter(item => !!item.title && !item.hideInExcel)
+    const thKeys = columnsData.map(item => item.key) // 获取列的 key
+    const thData = columnsData.map(item => item.title) // 获取列的标题
+    const trData = data.map(item => thKeys.map(key => item[key])) // 获取每一行的数据
+
+    // 使用 xlsx 库创建工作表
+    const sheet = utils.aoa_to_sheet([thData, ...trData])
+    const workBook = utils.book_new() // 创建新的工作簿
+    utils.book_append_sheet(workBook, sheet, '数据报表') // 将工作表添加到工作簿
+    writeFile(workBook, '数据报表.xlsx') // 导出为 Excel 文件
+}
+
+// 暴露给父组件的 API 方法
+defineExpose({
+    handleQuery,
+    handleSearch,
+    handleReset,
+    handleExport,
+    selections,
+    tableData,
+})
+</script>
+
+
+<style lang="scss" scoped></style>
+```
+
+
+
+#### 4 QueryItem.vue
+
+src/components/crud/QueryItem.vue
+
+该组件适合用于表单或其他类似的布局场景，其中每一行显示一个标签和值，且希望能够控制标签和内容区域的宽度。例如，用于显示表单字段的名称和对应的输入框或其他内容。
+
+1. **标签和内容布局**：这个组件主要用于显示一组标签和值对的布局。标签和内容部分通过 Flexbox 水平排列，且可以灵活控制标签和内容的宽度。
+   - `labelWidth` 控制标签的宽度。
+   - `contentWidth` 控制内容部分的宽度。
+2. **插槽**：通过 `<slot />`，该组件可以插入自定义内容，允许父组件动态传入各种内容（例如输入框、文本等）。
+3. **动态样式**：通过 `:style` 绑定，可以根据父组件传入的 `labelWidth` 和 `contentWidth` 控制元素的宽度，提升了组件的灵活性和可复用性。
+
+```vue
+<template>
+    <div class="flex items-center">
+        <label v-if="label" class="flex-shrink-0" :style="{ width: `${labelWidth}px` }">
+            {{ label }}
+        </label>
+        <div class="flex-shrink-0" :style="{ width: `${contentWidth}px` }">
+            <slot />
+        </div>
+    </div>
+</template>
+
+<script setup>
+defineProps({
+    label: { type: String, default: '' },
+    labelWidth: { type: Number, default: 80 },
+    contentWidth: { type: Number, default: 220 },
+})
+</script>
+
+<style lang="scss" scoped></style>
+```
+
+
+
+#### 5 composables
+
+**src/compostables/useCRUD.js**
+
+1. **`useCRUD` 函数**：提供一个封装的 CRUD 操作，通过传入配置对象（如表单名称、初始化数据、创建/删除/更新函数等），返回一组与表单和弹框交互的逻辑。
+2. **`modalAction`**：控制当前弹窗的操作类型（新增、编辑、查看），通过该值动态更新弹窗标题。
+3. **`handleSave`**：根据当前操作类型，调用相应的 API（新增或更新），并且提供了成功后回调的功能（例如成功提示、刷新数据等）。
+4. **`handleDelete`**：支持单条和批量删除，可以在删除前弹出确认框。
+
+注释将帮助你或其他开发者更好地理解代码的业务逻辑和结构。
+
+```javascript
+import { computed, ref } from 'vue'
+import { useForm } from './useForm'
+
+const ACTIONS = {
+  view: '查看',   // 查看操作
+  edit: '编辑',   // 编辑操作
+  add: '新增',    // 新增操作
+}
+
+/**
+ * @typedef {object} FormObject
+ * @property {string} name - 名称，表单模块的名称
+ * @property {object} initForm - 初始表单数据，作为表单默认值
+ * @property {Function} doCreate - 执行创建操作的函数
+ * @property {Function} doDelete - 执行删除操作的函数
+ * @property {Function} doUpdate - 执行更新操作的函数
+ * @property {Function} refresh - 刷新操作，用来更新界面
+ */
+
+/**
+ * 可复用的 CRUD 操作
+ * @param {FormObject} options - 包含了CRUD操作所需的配置项，如表单名称、初始化表单数据、创建、删除、更新函数等
+ */
+export function useCRUD({ name, initForm = {}, doCreate, doDelete, doUpdate, refresh }) {
+  const modalVisible = ref(false) // 弹框是否显示的状态
+  /** @type {'add' | 'edit' | 'view'} 弹窗操作类型 */
+  const modalAction = ref('') // 当前操作类型，用于控制是新增、编辑还是查看
+  /** 弹窗加载状态 */
+  const modalLoading = ref(false) // 弹窗是否在加载中
+  /** 弹窗标题 */
+  const modalTitle = computed(() => ACTIONS[modalAction.value] + name) // 根据当前操作类型动态生成弹窗标题
+
+  // 表单模型和表单引用
+  const { formModel: modalForm, formRef: modalFormRef, validation } = useForm(initForm)
+
+  /** 新增操作 */
+  function handleAdd() {
+    modalAction.value = 'add' // 设置操作类型为“新增”
+    modalVisible.value = true // 显示弹框
+    modalForm.value = { ...initForm } // 重置表单为初始化的默认值
+  }
+
+  /** 修改操作 */
+  function handleEdit(row) {
+    modalAction.value = 'edit' // 设置操作类型为“编辑”
+    modalVisible.value = true // 显示弹框
+    modalForm.value = { ...row } // 设置表单数据为选中的行数据
+  }
+
+  /** 查看操作 */
+  function handleView(row) {
+    modalAction.value = 'view' // 设置操作类型为“查看”
+    modalVisible.value = true // 显示弹框
+    modalForm.value = { ...row } // 设置表单数据为选中的行数据
+  }
+
+  /** 保存操作，处理新增或编辑 */
+  async function handleSave() {
+    // 只有在“新增”或“编辑”时才进行保存操作
+    if (!['edit', 'add'].includes(modalAction.value)) {
+      modalVisible.value = false // 关闭弹框
+      return
+    }
+
+    // 校验表单是否合法
+    if (!(await validation())) {
+      return false
+    }
+
+    // 根据操作类型选择对应的 API 函数和回调
+    const actions = {
+      add: {
+        api: () => doCreate(modalForm.value), // 调用新增接口
+        cb: () => window.$message.success('新增成功'), // 新增成功后的回调
+      },
+      edit: {
+        api: () => doUpdate(modalForm.value), // 调用更新接口
+        cb: () => window.$message.success('编辑成功'), // 编辑成功后的回调
+      },
+    }
+    const action = actions[modalAction.value]
+
+    try {
+      modalLoading.value = true // 开始加载
+      const data = await action.api() // 调用对应的 API 函数
+      action.cb() // 执行操作成功后的回调
+      modalLoading.value = modalVisible.value = false // 关闭加载状态和弹框
+      data && refresh(data) // 刷新数据
+    }
+    catch (error) {
+      console.error(error) // 错误处理
+      modalLoading.value = false // 关闭加载状态
+    }
+  }
+
+  /**
+   * 删除操作，支持单条删除和批量删除
+   * @param {Array} ids - 要删除的主键数组，单条删除传入单个 id，批量删除传入 id 数组
+   * @param {boolean} needConfirm - 是否需要确认窗口
+   */
+  async function handleDelete(ids, needConfirm = true) {
+    // 如果没有选中任何数据，则提示用户选择数据
+    if (!ids || (Array.isArray(ids) && !ids.length)) {
+      window.$message.info('请选择要删除的数据')
+      return
+    }
+
+    // 调用删除接口
+    const callDeleteAPI = async () => {
+      try {
+        modalLoading.value = true // 显示加载状态
+
+        // 判断是否是批量删除或单条删除
+        let data
+        if (typeof ids === 'number' || typeof ids === 'string') {
+          data = await doDelete(ids) // 单条删除
+        }
+        else {
+          data = await doDelete(JSON.stringify(ids)) // 批量删除
+        }
+
+        // 针对软删除的情况做判断
+        if (data?.code === 0) {
+          window.$message.success('删除成功') // 删除成功后提示
+        }
+        modalLoading.value = false // 关闭加载状态
+        refresh(data) // 刷新数据
+      }
+      catch (error) {
+        console.error(error) // 错误处理
+        modalLoading.value = false // 关闭加载状态
+      }
+    }
+
+    // 如果需要确认窗口，则弹出确认框
+    if (needConfirm) {
+      window.$dialog.confirm({
+        content: '确定删除？', // 确认删除提示文本
+        confirm: () => callDeleteAPI(), // 点击确认后的操作
+      })
+    }
+    else {
+      callDeleteAPI() // 直接调用删除操作
+    }
+  }
+
+  // 返回可供外部使用的函数和状态
+  return {
+    modalVisible,
+    modalAction,
+    modalTitle,
+    modalLoading,
+    handleAdd,
+    handleDelete,
+    handleEdit,
+    handleView,
+    handleSave,
+    modalForm,
+    modalFormRef,
+  }
+}
+```
+
+**src/compostables/useForm.js**
+
+1. **`formRef`**：用于引用表单实例，通过 `ref` 获取表单的 DOM 实例，主要用来调用表单方法，如验证（`validate`）。
+2. **`formModel`**：存储表单的实际数据。它是一个响应式对象，通过修改该对象的属性来控制表单字段的值。
+3. **`validation`**：异步函数，通过 `formRef` 获取的表单实例来执行验证。返回 `true` 表示验证成功，返回 `false` 表示验证失败。
+4. **`rules`**：定义了一个常见的验证规则（必填），可以根据需要扩展更多的规则，如格式验证、最大长度验证等。
+
+这些注释应该帮助你和其他开发者更好地理解该代码的功能和用途。
+
+```javascript
+import { ref } from 'vue'
+
+/**
+ * 可复用的表单对象
+ * 该函数用于封装表单的状态管理、验证逻辑以及表单规则的配置，可以在多个组件中复用。
+ * @param {any} initForm 表单初始值，用来初始化表单数据
+ * @returns {object} 返回一个包含表单引用、表单模型、验证函数和表单规则的对象
+ */
+export function useForm(initForm = {}) {
+  const formRef = ref(null) // 表单的引用，用来获取表单实例进行操作（如验证）
+  const formModel = ref({ ...initForm }) // 表单模型，保存表单数据，初始值为传入的 `initForm`
+
+  /**
+   * 表单验证函数
+   * 该函数会触发表单验证，验证通过返回 `true`，否则返回 `false`
+   * @returns {boolean} 验证是否通过
+   */
+  const validation = async () => {
+    try {
+      // 调用表单实例的 `validate` 方法进行表单验证
+      await formRef.value?.validate()
+      return true // 验证成功，返回 true
+    }
+    catch (error) {
+      return false // 验证失败，返回 false
+    }
+  }
+
+  // 表单字段的验证规则
+  const rules = {
+    required: {
+      required: true,  // 必填项
+      message: '此为必填项',  // 错误提示信息
+      trigger: ['blur', 'change'],  // 在 `blur`（失去焦点）或 `change`（值改变）时触发验证
+    },
+  }
+
+  // 返回包含表单引用、表单模型、验证方法和表单规则的对象
+  return { formRef, formModel, validation, rules }
+}
+```
+
+src/compostables/index.js
+
+```javascript
+export * from './useCRUD'
+export * from './useForm'
+```
+
+
+
+#### 6 index.js
+
+**CrudTable**
+
+![image-20250207174807312](./assets/image-20250207174807312.png)
+
+
+
+**CrudModal:**
+
+![image-20250207180849852](./assets/image-20250207180849852.png)
+
+**src/views/article/category/index.vue**
+
+- **查询功能**：用户可以通过分类名进行查询，查询结果会根据输入的关键字进行过滤。
+- **增、改、删功能**：通过 `handleAdd`、`handleEdit` 和 `handleDelete` 方法实现增、改、删操作，具体的业务逻辑在 API 层（`api.saveOrUpdateCategory`, `api.deleteCategory`）处理。
+- **表格导出**：点击导出按钮时，调用表格的 `handleExport` 方法实现导出功能。
+
+这段代码展示了一个 Vue 3 + Naive UI 实现的“分类管理”页面，包含了常见的增删改查操作和数据展示功能。它将业务逻辑分为多个组件，便于复用和维护。以下是对代码的详细分析：
+
+1. **整体结构**
+
+- **模板部分** (`<template>`): 定义了页面的视图结构，包括顶部操作按钮、查询框、数据表格以及新增/编辑分类的弹窗。
+- **脚本部分** (`<script setup>`): 通过 Vue 3 的 `<script setup>` 语法定义了组件的逻辑，包括数据管理、方法绑定、表格列配置等。
+- **样式部分** (`<style scoped>`): 使用了 scoped 样式来确保样式仅作用于当前组件。
+
+2. **页面内容**
+
+2.1 `CommonPage` 组件
+
+- 该组件作为页面的容器，接受 `title` 属性来设置页面标题。
+- action 插槽内放置了三个按钮：导出、添加分类和批量删除。
+  - **导出**按钮：点击时调用 `$table?.handleExport()` 导出表格数据。
+  - **新建分类**按钮：点击时弹出新建分类表单。
+  - **批量删除**按钮：点击时删除当前选中的分类（通过 `$table?.selections` 获取选中的行）。
+
+2.2 `CrudTable` 组件
+
+- 这是一个复用的表格组件，接受：
+  - `query-items`: 用于表格查询条件（如分类名）。
+  - `columns`: 表格的列配置。
+  - `get-data`: 用于获取表格数据的 API（这里是 `api.getCategorys`）。
+- **查询栏**(`queryBar` 插槽)：提供了一个分类名称的输入框，用于按分类名称进行搜索。
+
+2.3 `CrudModal` 组件
+
+- 这是一个复用的弹窗组件，展示表单，接受以下属性：
+  - `visible`: 控制弹窗的显示与隐藏。
+  - `title`: 弹窗标题。
+  - `loading`: 控制弹窗保存操作的加载状态。
+- 弹窗中包含了一个分类名称的输入框，并且提供了表单验证（必填）。
+
+2.4 表格列配置 (`columns`)
+
+- 表格中包含以下列：
+  - **分类名**：显示分类名称，宽度 100，居中显示。
+  - **文章量**：显示分类下的文章数量，宽度 30，居中显示。
+  - **创建日期**：通过 `NButton` 显示创建日期，并用图标展示。日期格式通过 `formatDate` 函数格式化。
+  - **更新日期**：同样通过 `NButton` 显示更新日期，格式化后显示。
+  - **操作列**：包含编辑和删除按钮，编辑按钮调用 `handleEdit(row)`，删除按钮调用 `handleDelete([row.id], false)`。
+
+2.5 `handleAdd`, `handleEdit`, `handleDelete` 方法
+
+- **`handleAdd`**：触发弹窗，初始化表单数据以新增分类。
+- **`handleEdit`**：触发弹窗并填充表单数据，编辑已有的分类。
+- **`handleDelete`**：批量删除或单项删除分类。调用 API `doDelete` 执行删除操作。
+
+3. **逻辑部分**
+
+3.1 `useCRUD` 自定义钩子通过 useCRUD自定义钩子封装了常见的增删改查操作。传入的配置包括：
+
+- `name`: 表单名称（分类）。
+- `doCreate`, `doDelete`, `doUpdate`: 处理新建、删除、更新的 API 函数。
+- `refresh`: 操作成功后刷新表格数据。
+
+- `useCRUD` 钩子返回了多个响应式数据和方法，供模板中调用，如：`modalVisible`, `modalTitle`, `modalLoading`, `handleSave`, `modalForm`, `modalFormRef` 等。
+
+3.2 表格数据的获取与刷新
+
+- `onMounted` 钩子：在组件挂载时调用 `$table.value?.handleSearch()`，触发表格数据的查询。
+- 每次增删改操作成功后，调用 `refresh` 函数来刷新表格数据。
+
+```vue
+<template>
+    <CommonPage title="分类管理">
+        <template #action>
+            <NButton type="primary" secondary @click="$table?.handleExport()">
+                <template #icon>
+                    <p class="i-mdi:download" />
+                </template>
+                导出
+            </NButton>
+            <NButton type="primary" @click="handleAdd">
+                <template #icon>
+                    <p class="i-material-symbols:add" />
+                </template>
+                新建分类
+            </NButton>
+            <NButton type="error" :disabled="!$table?.selections.length" @click="handleDelete($table?.selections)">
+                <template #icon>
+                    <p class="i-material-symbols:playlist-remove" />
+                </template>
+                批量删除
+            </NButton>
+        </template>
+        <CrudTable ref="$table" v-model:query-items="queryItems" :columns="columns" :get-data="api.getCategorys">
+            <template #queryBar>
+                <QueryItem label="分类名" :label-width="50">
+                    <NInput v-model:value="queryItems.keyword" clearable type="text" placeholder="请输入分类名"
+                        @keydown.enter="$table?.handleSearch()" />
+                </QueryItem>
+            </template>
+        </CrudTable>
+
+        <CrudModal v-model:visible="modalVisible" :title="modalTitle" :loading="modalLoading" @save="handleSave">
+            <NForm ref="modalFormRef" label-placement="left" label-align="left" :label-width="80" :model="modalForm">
+                <NFormItem label="文章分类" path="name"
+                    :rule="{ required: true, message: '请输入分类名称', trigger: ['input', 'blur'] }">
+                    <NInput v-model:value="modalForm.name" placeholder="请输入分类名称" clearable />
+                </NFormItem>
+            </NForm>
+        </CrudModal>
+    </CommonPage>
+</template>
+
+
+<script setup>
+import { h, onMounted, ref } from 'vue'
+import { NButton, NForm, NFormItem, NInput, NPopconfirm } from 'naive-ui'
+
+import CommonPage from '@/components/common/CommonPage.vue'
+import QueryItem from '@/components/crud/QueryItem.vue'
+import CrudModal from '@/components/crud/CrudModal.vue'
+import CrudTable from '@/components/crud/CrudTable.vue'
+
+import { formatDate } from '@/utils'
+import { useCRUD } from '@/composables'
+import api from '@/api'
+
+defineOptions({ name: '分类管理' })
+
+const $table = ref(null)
+const queryItems = ref({
+    keyword: '',
+})
+
+onMounted(() => {
+    $table.value?.handleSearch()
+})
+
+const {
+    modalVisible,
+    modalTitle,
+    modalLoading,
+    handleAdd,
+    handleDelete,
+    handleEdit,
+    handleSave,
+    modalForm,
+    modalFormRef,
+} = useCRUD({
+    name: '分类',
+    initForm: {},
+    doCreate: api.saveOrUpdateCategory,
+    doDelete: api.deleteCategory,
+    doUpdate: api.saveOrUpdateCategory,
+    refresh: () => $table.value?.handleSearch(),
+})
+
+const columns = [
+    { type: 'selection', width: 15, fixed: 'left' },
+    { title: '分类名', key: 'name', width: 100, align: 'center', ellipsis: { tooltip: true } },
+    { title: '文章量', key: 'article_count', width: 30, align: 'center' },
+    {
+        title: '创建日期',
+        key: 'created_at',
+        width: 80,
+        align: 'center',
+        render(row) {
+            return h(
+                NButton,
+                { size: 'small', type: 'text', ghost: true },
+                {
+                    default: () => formatDate(row.created_at),
+                    icon: () => h('i', { class: 'i-mdi:clock-time-three-outline' }),
+                },
+            )
+        },
+    },
+    {
+        title: '更新日期',
+        key: 'updated_at',
+        width: 80,
+        align: 'center',
+        render(row) {
+            return h(
+                NButton,
+                { size: 'small', type: 'text', ghost: true },
+                {
+                    default: () => formatDate(row.updated_at),
+                    icon: () => h('i', { class: 'i-mdi:update' }),
+                },
+            )
+        },
+    },
+    {
+        title: '操作',
+        key: 'actions',
+        width: 100,
+        align: 'center',
+        fixed: 'right',
+        render(row) {
+            return [
+                h(
+                    NButton,
+                    { size: 'small', type: 'primary', onClick: () => handleEdit(row) },
+                    { default: () => '编辑', icon: () => h('i', { class: 'i-material-symbols:edit-outline' }) },
+                ),
+                h(
+                    NPopconfirm,
+                    { onPositiveClick: () => handleDelete([row.id], false) },
+                    {
+                        trigger: () => h(
+                            NButton,
+                            { size: 'small', type: 'error', style: 'margin-left: 15px;' },
+                            { default: () => '删除', icon: () => h('i', { class: 'i-material-symbols:delete-outline' }) },
+                        ),
+                        default: () => h('div', {}, '确定删除该分类吗?'),
+                    },
+                ),
+            ]
+        },
+    },
+]
+</script>
+
+<style lang="scss" scoped></style>
+```
+
+
+
+
+
+### 9.4.3 list/index.js
+
+
+
+### 9.4.4 tag/index.js
+
+
+
+### 9.4.5 write/index.js
 
 
 
