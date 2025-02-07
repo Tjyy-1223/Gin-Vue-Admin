@@ -2116,6 +2116,5 @@ export default {
 至此，后续只需要关注 vue 相关组件的开发即可，主要组件位于下面的位置：
 
 + src/components
-+ src/composables
 + src/layout
 + src/views
