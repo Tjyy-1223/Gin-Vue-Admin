@@ -696,6 +696,85 @@ export default {
 
 ### 9.4.1 route.js
 
+```javascript
+const Layout = () => import('@/layout/index.vue')
+
+export default {
+  name: 'Article',
+  path: '/article',
+  component: Layout,
+  redirect: '/article/list',
+  meta: {
+    title: '文章管理',
+    icon: 'ic:twotone-article',
+    order: 2,
+    // role: ['admin'],
+    // requireAuth: true,
+  },
+  children: [
+    {
+      name: 'ArticleList',
+      path: 'list',
+      component: () => import('./list/index.vue'),
+      meta: {
+        title: '文章列表',
+        icon: 'material-symbols:format-list-bulleted',
+        // role: ['admin'],
+        // requireAuth: true,
+        keepAlive: true,
+      },
+    },
+    {
+      name: 'ArticleWrite',
+      path: 'write',
+      component: () => import('./write/index.vue'),
+      meta: {
+        title: '发布文章',
+        icon: 'icon-park-outline:write',
+        // role: ['admin'],
+        // requireAuth: true,
+        keepAlive: true,
+      },
+    },
+    {
+      name: 'ArticleEdit',
+      path: 'write/:id',
+      component: () => import('./write/index.vue'),
+      isHidden: true,
+      meta: {
+        title: '编辑文章',
+        icon: 'icon-park-outline:write',
+        // role: ['admin'],
+        // requireAuth: true,
+        // keepAlive: true,
+      },
+    },
+    {
+      name: 'CategoryList',
+      path: 'category-list',
+      component: () => import('./category/index.vue'),
+      meta: {
+        title: '分类管理',
+        icon: 'tabler:category',
+        // role: ['admin'],
+        // requireAuth: true,
+        keepAlive: true,
+      },
+    },
+    {
+      name: 'TagList',
+      path: 'tag-list',
+      component: () => import('./tag/index.vue'),
+      meta: {
+        title: '标签管理',
+        icon: 'tabler:tag',
+        keepAlive: true,
+      },
+    },
+  ],
+}
+```
+
 
 
 ### 9.4.2 category/index.js
@@ -1559,13 +1638,1011 @@ const columns = [
 
 ### 9.4.3 list/index.js
 
+![image-20250207185136315](./assets/image-20250207185136315.png)
+
+**src/views/article/list/index.vue**
+
+```vue
+<template>
+    <CommonPage title="文章列表">
+        <template #action>
+            <NButton type="primary" @click="$router.replace('/article/write')">
+                <template #icon>
+                    <p class="i-material-symbols:add" />
+                </template>
+                新建文章
+            </NButton>
+            <NButton type="error" :disabled="!$table?.selections.length" @click="handleDelete($table?.selections)">
+                <template #icon>
+                    <p class="i-material-symbols:recycling-rounded" />
+                </template>
+                批量删除
+            </NButton>
+            <NButton type="info" :disabled="!$table?.selections.length" @click="exportArticles($table?.selections)">
+                <template #icon>
+                    <p class="i-mdi:export" />
+                </template>
+                批量导出
+            </NButton>
+            <div class="inline-block">
+                <NUpload action="/api/article/import" :show-file-list="false" multiple @before-upload="beforeUpload"
+                    @finish="afterUpload">
+                    <NButton type="success">
+                        <template #icon>
+                            <p class="i-mdi:import" />
+                        </template>
+                        批量导入
+                    </NButton>
+                </NUpload>
+            </div>
+        </template>
+
+        <NTabs type="line" animated @update:value="handleChangeTab">
+            <template #prefix>
+                状态
+            </template>
+            <NTabPane name="all" tab="全部" />
+            <NTabPane name="public" tab="公开" />
+            <NTabPane name="secret" tab="私密" />
+            <NTabPane name="draft" tab="草稿箱" />
+            <NTabPane name="delete" tab="回收站" />
+        </NTabs>
+
+        <CrudTable ref="$table" v-model:query-items="queryItems" :extra-params="extraParams" :columns="columns"
+            :get-data="api.getArticles">
+            <template #queryBar>
+                <QueryItem label="标题" :label-width="40" :content-width="180">
+                    <NInput v-model:value="queryItems.title" clearable type="text" placeholder="请输入标题"
+                        @keydown.enter="$table?.handleSearch()" />
+                </QueryItem>
+                <QueryItem label="类型" :label-width="40" :content-width="160">
+                    <NSelect v-model:value="queryItems.type" clearable placeholder="请选择文章类型"
+                        :options="articleTypeOptions" @update:value="$table?.handleSearch()" />
+                </QueryItem>
+                <QueryItem label="分类" :label-width="40" :content-width="160">
+                    <NSelect v-model:value="queryItems.category_id" clearable filterable placeholder="请选择文章分类"
+                        :options="categoryOptions" @update:value="$table?.handleSearch()" />
+                </QueryItem>
+                <QueryItem label="标签" :label-width="40" :content-width="160">
+                    <NSelect v-model:value="queryItems.tag_id" clearable filterable placeholder="请选择文章标签"
+                        :options="tagOptions" @update:value="$table?.handleSearch()" />
+                </QueryItem>
+            </template>
+        </CrudTable>
+    </CommonPage>
+</template>
+
+
+<script setup>
+import { defineOptions, h, onActivated, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { NButton, NImage, NInput, NPopconfirm, NSelect, NSwitch, NTabPane, NTabs, NTag, NUpload } from 'naive-ui'
+
+import CommonPage from '@/components/common/CommonPage.vue'
+import QueryItem from '@/components/crud/QueryItem.vue'
+import CrudTable from '@/components/crud/CrudTable.vue'
+
+import { convertImgUrl, formatDate } from '@/utils'
+import { useCRUD } from '@/composables'
+import { articleTypeMap, articleTypeOptions } from '@/assets/config'
+import api from '@/api'
+
+// 需要 KeepAlive 必须写 name 属性, 并且和 router 中 name 对应
+defineOptions({ name: '文章列表' })
+
+const route = useRoute()
+const router = useRouter()
+
+const categoryOptions = ref([])
+const tagOptions = ref([])
+
+const $table = ref(null)
+
+const queryItems = ref({
+    title: '', // 标题
+    type: null, // 类型
+    category_id: null, // 分类
+    tag_id: null, // 标签
+})
+
+const extraParams = ref({
+    is_delete: null, // 未删除 | 回收站
+    status: null, // null-all, 1-公开, 2-私密, 3-草稿
+})
+
+const { handleDelete } = useCRUD({
+    name: '文章',
+    doDelete: updateOrDeleteArticles, // 软删除
+    refresh: () => $table.value?.handleSearch(),
+})
+
+onMounted(() => {
+    api.getCategoryOption().then(res => (categoryOptions.value = res.data))
+    api.getTagOption().then(res => (tagOptions.value = res.data))
+    handleChangeTab('all') // 默认查看全部
+})
+
+// ! 切换页面时, 如果是 [写文章] 页面跳转过来, 会携带 needRefresh 参数
+onActivated(() => {
+    const { needRefresh } = route.query
+    needRefresh && ($table.value?.handleSearch())
+})
+
+const columns = [
+    { type: 'selection', width: 20, fixed: 'left' },
+    {
+        title: '文章封面',
+        key: 'img',
+        width: 55,
+        align: 'center',
+        render(row) {
+            return h(NImage, {
+                imgProps: { style: { 'border-radius': '2px', 'height': '100%', 'width': '100%' } },
+                src: convertImgUrl(row.img),
+                fallbackSrc: 'http://dummyimage.com/400x400',
+                showToolbarTooltip: true,
+            })
+        },
+    },
+    {
+        title: '文章标题',
+        key: 'title',
+        width: 120,
+        align: 'center',
+        ellipsis: { tooltip: true },
+    },
+    {
+        title: '分类',
+        key: 'category.name',
+        width: 60,
+        align: 'center',
+        ellipsis: { tooltip: true },
+        render(row) {
+            return h('div', row.category.name || '无')
+        },
+    },
+    {
+        title: '标签',
+        key: 'tags',
+        width: 100,
+        align: 'center',
+        render(row) {
+            const tags = row.tags ?? []
+            const group = []
+            for (let i = 0; i < tags.length; i++) {
+                group.push(
+                    h(NTag, { type: 'info', style: { margin: '2px 3px' } }, { default: () => tags[i].name }),
+                )
+            }
+            return h('div', group.length ? group : '无')
+        },
+    },
+    {
+        title: '浏览量',
+        key: 'view_count',
+        width: 40,
+        align: 'center',
+        ellipsis: { tooltip: true },
+    },
+    {
+        title: '点赞量',
+        key: 'like_count',
+        width: 40,
+        align: 'center',
+        ellipsis: { tooltip: true },
+    },
+    {
+        title: '类型',
+        key: 'type',
+        width: 50,
+        align: 'center',
+        render(row) {
+            return h(
+                NTag,
+                { type: articleTypeMap[row.type]?.tag },
+                { default: () => articleTypeMap[row.type]?.name },
+            )
+        },
+    },
+    {
+        title: '发布时间',
+        key: 'updateDate',
+        align: 'center',
+        width: 80,
+        render(row) {
+            return h(
+                NButton,
+                { size: 'small', type: 'text', ghost: true },
+                {
+                    default: () => formatDate(row.updated_at),
+                    icon: () => h('i', { class: 'i-mdi:update' }),
+                },
+            )
+        },
+    },
+    {
+        title: '置顶',
+        key: 'is_top',
+        width: 50,
+        align: 'center',
+        fixed: 'left',
+        render(row) {
+            return h(NSwitch, {
+                size: 'small',
+                rubberBand: false,
+                value: row.is_top,
+                loading: !!row.publishing,
+                onUpdateValue: () => handleUpdateTop(row),
+            })
+        },
+    },
+    {
+        title: '操作',
+        key: 'actions',
+        width: 120,
+        align: 'center',
+        fixed: 'right',
+        render(row) {
+            return [
+                row.is_delete
+                    ? h(
+                        NButton,
+                        {
+                            size: 'small',
+                            type: 'success',
+                            secondary: true,
+                            onClick: async () => {
+                                await api.softDeleteArticle([row.id], false)
+                                await $table.value?.handleSearch()
+                            },
+                        },
+                        { default: () => '恢复', icon: () => h('i', { class: 'i-majesticons:eye-line' }) },
+                    )
+                    : h(
+                        NButton,
+                        {
+                            size: 'small',
+                            type: 'primary',
+                            secondary: true,
+                            onClick: () => router.push(`/article/write/${row.id}`), // 携带参数前往 写文章 页面
+                        },
+                        { default: () => '查看', icon: () => h('i', { class: 'i-majesticons:eye-line' }) },
+                    ),
+                h(
+                    NPopconfirm,
+                    { onPositiveClick: () => handleDelete([row.id], false) },
+                    {
+                        trigger: () =>
+                            h(
+                                NButton,
+                                { size: 'small', type: 'error', style: 'margin-left: 15px;' },
+                                { default: () => '删除', icon: () => h('i', { class: 'i-material-symbols:delete-outline' }) },
+                            ),
+                        default: () => h('div', {}, '确定删除该文章吗?'),
+                    },
+                ),
+            ]
+        },
+    },
+]
+
+function updateOrDeleteArticles(ids) {
+    extraParams.value.is_delete
+        ? api.deleteArticle(ids)
+        : api.softDeleteArticle(JSON.parse(ids), true)
+}
+
+// 修改文章置顶
+async function handleUpdateTop(row) {
+    if (!row.id) {
+        return
+    }
+    row.publishing = true
+    row.is_top = !row.is_top
+    try {
+        await api.updateArticleTop(row.id, row.is_top)
+        $message?.success(row.is_top ? '已成功置顶' : '已取消置顶')
+        $table.value?.handleSearch()
+    }
+    catch (err) {
+        console.error(err)
+    }
+    finally {
+        row.publishing = false
+    }
+}
+
+// 导出文章
+async function exportArticles(ids) {
+    // 方式一: 前端根据文章内容和标题进行导出
+    const list = $table.value?.tableData.filter(e => ids.includes(e.id))
+    for (const item of list)
+        downloadFile(item.content, `${item.title}.md`)
+
+    // 方式二: 后端导出返回链接, 前端根据链接下载
+    // const res = await api.exportArticles(ids)
+    // for (const url of res.data)
+    // downloadFile(url)
+}
+
+// 切换标签页: [全部, 公开, 私密, 草稿箱, 回收站]
+function handleChangeTab(value) {
+    switch (value) {
+        case 'all':
+            extraParams.value.is_delete = 0
+            extraParams.value.status = null
+            break
+        case 'public':
+            extraParams.value.is_delete = 0
+            extraParams.value.status = 1
+            break
+        case 'secret':
+            extraParams.value.is_delete = 0
+            extraParams.value.status = 2
+            break
+        case 'draft':
+            extraParams.value.is_delete = 0
+            extraParams.value.status = 3
+            break
+        case 'delete':
+            extraParams.value.is_delete = 1
+            extraParams.value.status = null
+            break
+    }
+    $table.value?.handleSearch()
+}
+
+// 文件上传前检查类型
+function beforeUpload(data) {
+    if (!data.file.name.endsWith('.md')) {
+        $message.error('只能上传 .md 格式的文件，请重新上传')
+        return false
+    }
+    return true
+}
+
+// 文件上传后的操作
+function afterUpload({ event }) {
+    const respStr = (event?.target).response
+    const res = JSON.parse(respStr)
+    if (res.code === 0) {
+        $table.value?.handleSearch()
+        $message.success('文章导入成功！')
+    }
+    else {
+        $message.error('文章导入失败！')
+    }
+}
+
+function downloadFile(content, fileName) {
+    const aEle = document.createElement('a') // 创建下载链接
+    aEle.download = fileName // 设置下载的名称
+    aEle.style.display = 'none'// 隐藏的可下载链接
+    // 字符内容转变成 blob 地址
+    const blob = new Blob([content])
+    aEle.href = URL.createObjectURL(blob)
+    // 绑定点击时间
+    document.body.appendChild(aEle)
+    aEle.click()
+    // 然后移除
+    document.body.removeChild(aEle)
+}
+</script>
+
+<style lang="scss" scoped></style>
+```
+
 
 
 ### 9.4.4 tag/index.js
 
+![image-20250207214458886](./assets/image-20250207214458886.png)
+
+```vue
+<template>
+    <CommonPage title="标签管理">
+        <template #action>
+            <NButton type="primary" @click="handleAdd">
+                <template #icon>
+                    <p class="i-material-symbols:add" />
+                </template>
+                新建标签
+            </NButton>
+            <NButton type="error" :disabled="!$table?.selections.length" @click="handleDelete($table?.selections)">
+                <template #icon>
+                    <p class="i-material-symbols:playlist-remove" />
+                </template>
+                批量删除
+            </NButton>
+        </template>
+
+        <CrudTable ref="$table" v-model:query-items="queryItems" :columns="columns" :get-data="api.getTags"
+            @sorter-change="handleSorterChange">
+            <template #queryBar>
+                <QueryItem label="标签名" :label-width="50">
+                    <NInput v-model:value="queryItems.keyword" clearable type="text" placeholder="请输入标签名"
+                        @keydown.enter="$table?.handleSearch()" />
+                </QueryItem>
+            </template>
+        </CrudTable>
+
+        <CrudModal v-model:visible="modalVisible" :title="modalTitle" :loading="modalLoading" @save="handleSave">
+            <NForm ref="modalFormRef" label-placement="left" label-align="left" :label-width="80" :model="modalForm">
+                <NFormItem label="文章标签" path="name"
+                    :rule="{ required: true, message: '请输入标签名称', trigger: ['input', 'blur'] }">
+                    <NInput v-model:value="modalForm.name" placeholder="请输入标签名称" clearable />
+                </NFormItem>
+            </NForm>
+        </CrudModal>
+    </CommonPage>
+</template>
+
+
+<script setup>
+import { h, onMounted, ref } from 'vue'
+import { NButton, NForm, NFormItem, NInput, NPopconfirm, NTag } from 'naive-ui'
+
+import CommonPage from '@/components/common/CommonPage.vue'
+import QueryItem from '@/components/crud/QueryItem.vue'
+import CrudModal from '@/components/crud/CrudModal.vue'
+import CrudTable from '@/components/crud/CrudTable.vue'
+
+import { formatDate } from '@/utils'
+import { useCRUD } from '@/composables'
+import api from '@/api'
+
+defineOptions({ name: '标签管理' })
+
+const $table = ref(null)
+const queryItems = ref({
+    keyword: '',
+})
+
+onMounted(() => {
+    $table.value?.handleSearch()
+})
+
+const {
+    modalVisible,
+    modalTitle,
+    modalLoading,
+    handleAdd,
+    handleDelete,
+    handleEdit,
+    handleSave,
+    modalForm,
+    modalFormRef,
+} = useCRUD({
+    name: '标签',
+    initForm: {},
+    doCreate: api.saveOrUpdateTag,
+    doDelete: api.deleteTag,
+    doUpdate: api.saveOrUpdateTag,
+    refresh: () => $table.value?.handleSearch(),
+})
+
+const columns = [
+    { type: 'selection', width: 15, fixed: 'left' },
+    {
+        title: '标签名',
+        key: 'name',
+        width: 100,
+        align: 'center',
+        render(row) {
+            return h(NTag, { type: 'info' }, { default: () => row.name })
+        },
+    },
+    {
+        title: '文章量',
+        key: 'article_count',
+        width: 30,
+        align: 'center',
+    },
+    {
+        title: '创建日期',
+        key: 'created_at',
+        width: 80,
+        align: 'center',
+        render(row) {
+            return h(
+                NButton,
+                { size: 'small', type: 'text', ghost: true },
+                {
+                    default: () => formatDate(row.created_at),
+                    icon: () => h('i', { class: 'i-mdi:clock-time-three-outline' }),
+                },
+            )
+        },
+    },
+    {
+        title: '更新日期',
+        key: 'updated_at',
+        width: 80,
+        align: 'center',
+        render(row) {
+            return h(
+                NButton,
+                { size: 'small', type: 'text', ghost: true },
+                {
+                    default: () => formatDate(row.updated_at),
+                    icon: () => h('i', { class: 'i-mdi:update' }),
+                },
+            )
+        },
+    },
+    {
+        title: '操作',
+        key: 'actions',
+        width: 100,
+        align: 'center',
+        fixed: 'right',
+        render(row) {
+            return [
+                h(
+                    NButton,
+                    { size: 'small', type: 'primary', onClick: () => handleEdit(row) },
+                    { default: () => '编辑', icon: () => h('i', { class: 'i-material-symbols:edit-outline' }) },
+                ),
+                h(
+                    NPopconfirm,
+                    { onPositiveClick: () => handleDelete([row.id], false) },
+                    {
+                        trigger: () => h(
+                            NButton,
+                            { size: 'small', type: 'error', style: 'margin-left: 15px;' },
+                            { default: () => '删除', icon: () => h('i', { class: 'i-material-symbols:delete-outline' }) },
+                        ),
+                        default: () => h('div', {}, '确定删除该标签吗?'),
+                    },
+                ),
+            ]
+        },
+    },
+]
+
+// eslint-disable-next-line unused-imports/no-unused-vars
+function handleSorterChange(sorter) {
+    // TODO: 添加后端排序
+}
+</script>
+
+<style lang="scss" scoped></style>
+```
+
 
 
 ### 9.4.5 write/index.js
+
+#### 1 UploadOne.vue
+
+这段代码实现了一个图片上传组件，结合了 `Naive UI` 和 `Vue 3`，允许用户上传图片并展示上传后的图片预览。代码结构清晰，功能简单明了。以下是对这段代码的详细分析。主要功能分析：
+
+2.1 图片上传
+
+- **文件上传**：使用 `NUpload` 组件实现文件上传功能。上传时，`action` 指定了服务器上传接口 `/api/upload`，并通过请求头携带了 `Authorization` 字段（认证 token）。
+- **图片预览**：上传的图片会通过 `handleImgUpload` 方法处理，成功后会将图片的 URL 保存在 `previewImg` 中，并通过 `emit` 向父组件更新预览图片。
+- **拖拽与点击上传**：用户可以点击上传框或者拖拽文件到上传区域进行上传。上传框内有图标和提示信息，提升用户体验。
+
+2.2 图片 URL 转换
+
+- **`imgUrl` 计算属性**：调用 `convertImgUrl(previewImg.value)` 函数来判断和处理图片 URL。通常在开发环境中可能使用本地上传的图片，而在生产环境中可能使用云存储地址。这个函数的具体实现应该是根据环境返回合适的 URL。
+
+2.3 响应式与父组件交互
+
+- **`previewImg`**：保存当前的图片 URL 或 base64 数据，决定了是否显示图片预览。
+- **`watch` 监听器**：监听 `props.preview` 的变化，并更新 `previewImg`，确保预览图的更新与父组件同步。
+- **`emit('update:preview')`**：上传图片后，将新的图片 URL 返回给父组件，保持组件之间的数据同步。
+
+------
+
+------
+
+**整体结构**
+
+**1.1 模板部分 (`<template>`)**
+
+- **`NUpload` 组件**：这是 `Naive UI` 提供的文件上传组件，支持通过拖拽或点击按钮上传文件。
+  - `action`：指定上传文件的接口 URL，这里是 `/api/upload`。
+  - `:headers`：上传时附加的请求头，包含 `Authorization` 字段，用于携带用户的认证 token。
+  - `:show-file-list="false"`：禁用文件列表展示，表示上传后不展示文件列表。
+  - `@finish="handleImgUpload"`：上传完成后触发的事件，调用 `handleImgUpload` 方法处理上传的文件。
+- **图片预览**：在上传前后显示不同内容：
+  - 如果 `previewImg` 存在，显示上传成功后的图片预览。
+  - 否则，展示上传框（`NUploadDragger`）和提示信息：“点击或者拖动文件到该区域来上传”。
+- **上传框（`NUploadDragger`）**：
+  - 提供一个区域，用户可以点击或者拖动文件进行上传。
+  - 上传框内显示一个图标和提示文本：“点击或者拖动文件到该区域来上传”。
+
+**1.2 脚本部分 (`<script setup>`)**
+
+- **`props`**：通过 `defineProps` 定义传入的组件属性：
+  - `preview`：初始的图片 URL 或 base64 数据，如果传入该值，则组件显示图片预览。
+  - `width`：设置图片预览的宽度，默认值为 120。
+- **`emit`**：通过 `defineEmits` 定义事件，用于向父组件发送 `update:preview` 事件，通知父组件更新预览图。
+- **`useAuthStore`**：使用 Pinia（或 Vuex）状态管理库中的 `useAuthStore`，获取认证 token，用于文件上传时的认证。
+- **`previewImg`**：响应式变量，保存当前的图片预览 URL。初始化为 `props.preview` 的值，并通过 `watch` 监听 `props.preview` 的变化来更新预览图。
+- **`handleImgUpload`**：图片上传完成后的回调函数：
+  - 获取上传接口返回的数据并解析。
+  - 如果上传失败，弹出错误提示。
+  - 如果上传成功，更新 `previewImg`，并通过 `emit` 事件向父组件传递新的图片 URL。
+- **`imgUrl`**：计算属性，调用 `convertImgUrl` 函数来转换上传后的图片 URL。该函数用于判断图片是本地文件还是网络资源，并返回最终的 URL。
+- **`defineExpose`**：暴露 `previewImg` 给父组件或外部使用。使得父组件可以访问到当前的 `previewImg` 值。
+
+```vue
+<template>
+    <div>
+        <NUpload action="/api/upload" :headers="{ Authorization: `Bearer ${token}` }" :show-file-list="false"
+            @finish="handleImgUpload">
+            <template v-if="previewImg">
+                <img border-color="#d9d9d9"
+                    class="cursor-pointer border-2 rounded-lg border-dashed hover:border-color-lightblue"
+                    :style="{ width: `${props.width}px` }" :src="imgUrl" alt="文章封面">
+            </template>
+            <template v-else>
+                <NUploadDragger>
+                    <div class="mb-3">
+                        <NIcon size="50" :depth="3">
+                            <span class="i-mdi:upload" />
+                        </NIcon>
+                    </div>
+                    <NText>
+                        点击或者拖动文件到该区域来上传
+                    </NText>
+                </NUploadDragger>
+            </template>
+        </NUpload>
+    </div>
+</template>
+
+<script setup>
+import { computed, ref, watch } from 'vue'
+import { NIcon, NText, NUpload, NUploadDragger } from 'naive-ui'
+import { useAuthStore } from '@/store'
+import { convertImgUrl } from '@/utils'
+
+const props = defineProps({
+    preview: {
+        type: String,
+        default: '',
+    },
+    width: {
+        type: Number,
+        default: 120,
+    },
+})
+
+const emit = defineEmits(['update:preview'])
+
+const { token } = useAuthStore()
+const previewImg = ref(props.preview)
+
+watch(() => props.preview, val => previewImg.value = val)
+
+// 上传图片
+function handleImgUpload({ event }) {
+    const respStr = (event?.target).response
+    const res = JSON.parse(respStr)
+    if (res.code !== 0) {
+        $message?.error(res.message)
+        return
+    }
+    previewImg.value = res.data
+    emit('update:preview', previewImg.value)
+}
+
+// 判断是本地上传的图片或网络资源
+// 开发环境可以使用本地文件上传, 生产环境建议使用云存储
+const imgUrl = computed(() => convertImgUrl(previewImg.value))
+
+defineExpose({ previewImg })
+</script>
+
+<style lang="scss" scoped></style>
+```
+
+
+
+#### 2 index.js
+
+<img src="./assets/image-20250207223946249.png" alt="image-20250207223946249" style="zoom: 50%;" />
+
+
+
+<img src="./assets/image-20250207224009304.png" alt="image-20250207224009304" style="zoom:50%;" />
+
+**src/views/article/write/index.vue**
+
+这段代码实现了一个完整的文章发布与编辑功能，结合了 `Naive UI` 和 `MDEditor` 进行内容编辑与展示，支持动态标签、分类选择、文章类型设置等功能。代码结构清晰，使用了 Vue 3 的响应式数据绑定和生命周期钩子，整体设计合理。
+
+1. **整体结构**
+
+- **标题输入框**：通过 `NInput` 组件，用户可以输入文章的标题，输入框的样式通过类名和 `v-model` 双向绑定到 `formModel.title`。
+- **操作按钮**：
+  - **保存草稿**：点击按钮触发 `handleDraft` 方法来保存文章草稿。按钮展示一个图标，点击后会显示加载状态。
+  - **发布文章**：点击按钮触发 `handlePublish` 方法，这将打开发布文章的确认模态框，等待用户确认是否发布。
+- **MD 编辑器**：使用 `MdEditor` 组件来编辑文章的内容，绑定到 `formModel.content`，编辑器的高度动态计算为屏幕高度减去固定值 `245px`，保证页面布局的合理性。
+- **发布文章的模态框 (`CrudModal`)**：
+  - **文章分类**：通过 `NSelect` 选择文章分类。
+  - **文章标签**：通过 `NDynamicTags` 实现动态标签功能，支持添加和删除标签，最多允许 3 个标签。
+  - **文章类型**：通过 `NSelect` 选择文章类型（如原创、转载等）。
+  - **原文地址**：在文章类型为转载或其他时，显示原文地址的输入框。
+  - **文章缩略图**：使用 `UploadOne` 组件上传文章缩略图，绑定到 `formModel.img`。
+  - **置顶**：通过 `NSwitch` 控件让文章是否置顶。
+  - **发布形式**：通过 `NRadioGroup` 控件选择文章的发布形式，公开或私密。
+
+2. 脚本部分 (`<script setup>`)
+
+- **数据与引用 (`ref`)**：
+  - `categoryOptions`, `tagOptions`: 用于存储文章的分类和标签选项。
+  - `formModel`: 绑定文章表单的响应式对象，存储文章的各个字段，如标题、分类、标签、内容等。
+  - `btnLoading`: 控制按钮的加载状态。
+  - `modalVisible`: 控制发布文章模态框的显示与隐藏。
+- **生命周期钩子 (`onMounted`, `onActivated`)**：
+  - **`fetchData`**：在组件挂载和激活时，分别调用 `fetchData` 来加载文章的分类和标签选项。该方法调用了 API 获取分类和标签的列表，并将其存储在响应式对象中。
+  - **`getArticleInfo`**：根据路由参数中的 `id` 来判断是编辑还是新增文章。如果有 `id`，则获取文章信息并填充到表单中。
+- **文章信息加载 (`getArticleInfo`)**：
+  - 如果存在路由参数中的 `id`，则通过 `api.getArticleById(id)` 获取指定文章的详细信息，并填充到 `formModel` 中。
+  - 如果没有 `id`，表示是新增文章，初始化表单为默认值。
+- **保存与发布操作**：
+  - **保存草稿** (`handleDraft`): 暂未实现，当前仅展示一个提示信息。
+  - **发布文章** (`handlePublish`): 检查文章标题是否为空，如果为空则提示用户输入标题。如果标题非空，则显示发布文章的确认模态框。
+  - **保存文章** (`handleSave`): 提交表单数据，通过 `formRef.value?.validate()` 进行表单验证，验证通过后，调用 `api.saveOrUpdateArticle` 保存或更新文章数据。保存完成后，关闭模态框，并提示操作成功。
+- **标签选择 (`watch` 和 `NDynamicTags`)**：
+  - 使用 `NDynamicTags` 动态标签组件，允许用户添加最多 3 个标签。标签选项会随着选择的标签动态更新，已选择的标签会被从标签列表中移除。
+- **表单验证规则 (`rules`)**：
+  - 对 `category_name` 和 `tag_names` 字段添加了必填验证，确保文章分类和标签不能为空。
+- **渲染标签函数 (`renderTag`)**：自定义标签渲染方式，显示已选择的标签，最多允许显示 3 个标签，超出部分不可关闭。
+
+```vue
+<template>
+    <CommonPage :show-header="false" title="写文章">
+        <div class="mb-4 flex items-center bg-white space-x-2">
+            <NInput v-model:value="formModel.title" type="text" class="mr-5 flex-1 py-1 text-lg color-primary font-bold"
+                placeholder="输入文章标题..." />
+            <NButton ghost type="error" :loading="btnLoading" @click="handleDraft">
+                <template #icon>
+                    <p v-if="!btnLoading" class="i-line-md:uploading-loop" />
+                </template>
+                保存草稿
+            </NButton>
+            <NButton type="error" :loading="btnLoading" @click="handlePublish">
+                <template #icon>
+                    <p v-if="!btnLoading" class="i-line-md:confirm-circle" />
+                </template>
+                发布文章
+            </NButton>
+        </div>
+
+        <!-- TODO: 文件上传 -->
+        <MdEditor v-model="formModel.content" style="height: calc(100vh - 245px)" />
+
+        <CrudModal v-model:visible="modalVisible" title="发布文章" :loading="btnLoading" show-footer @save="handleSave">
+            <NForm ref="formRef" label-placement="left" label-align="left" :label-width="100" :model="formModel"
+                :rules="rules">
+                <NFormItem label="文章分类" path="category_name">
+                    <NSelect v-model:value="formModel.category_name" style="width: 50%" clearable filterable tag
+                        placeholder="关键字搜索，enter 添加" :options="categoryOptions" />
+                </NFormItem>
+                <NFormItem label="文章标签" path="tag_names">
+                    <NDynamicTags v-model:value="formModel.tag_names" :render-tag="renderTag" :max="3">
+                        <template #input="{ submit, deactivate }">
+                            <NSelect v-model:value="newTag" size="small" filterable tag clearable :options="tagOptions"
+                                placeholder="标签名称" @update:value="{
+                                    submit($event);
+                                    newTag = null;
+                                }" @blur="deactivate">
+                                <template #action>
+                                    输入标签名搜索，enter 添加自定义标签
+                                </template>
+                            </NSelect>
+                        </template>
+                    </NDynamicTags>
+                </NFormItem>
+                <NFormItem label="文章类型" path="type">
+                    <NSelect v-model:value="formModel.type" style="width: 50%" placeholder="请选择文章分类"
+                        :options="articleTypeOptions" />
+                </NFormItem>
+                <!-- <n-form-item label="文章描述" path="desc">
+            <n-input
+              v-model:value="formModel.desc"
+              placeholder="请输入文章描述"
+              type="textarea"
+              :autosize="{ minRows: 3, maxRows: 5 }"
+            />
+          </n-form-item> -->
+                <NFormItem v-if="(formModel.type === 2 || formModel.type === 3)" label="原文地址" path="original_url">
+                    <NInput v-model:value="formModel.original_url" type="text" placeholder="请填写原文连接" />
+                </NFormItem>
+                <NFormItem label="文章缩略图" path="img">
+                    <UploadOne v-model:preview="formModel.img" :width="220" />
+                </NFormItem>
+                <NFormItem label="置顶" path="is_top">
+                    <NSwitch v-model:value="formModel.is_top" />
+                </NFormItem>
+                <NFormItem label="发布形式" path="status">
+                    <NRadioGroup v-model:value="formModel.status" name="radiogroup">
+                        <NSpace>
+                            <NRadio :value="1">
+                                公开
+                            </NRadio>
+                            <NRadio :value="2">
+                                私密
+                            </NRadio>
+                        </NSpace>
+                    </NRadioGroup>
+                </NFormItem>
+            </NForm>
+        </CrudModal>
+    </CommonPage>
+</template>
+
+<script setup>
+import { h, nextTick, onActivated, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { NButton, NDynamicTags, NForm, NFormItem, NInput, NRadio, NRadioGroup, NSelect, NSpace, NSwitch, NTag } from 'naive-ui'
+import { MdEditor } from 'md-editor-v3'
+import 'md-editor-v3/lib/style.css'
+
+import CommonPage from '@/components/common/CommonPage.vue'
+import CrudModal from '@/components/crud/CrudModal.vue'
+import UploadOne from '@/components//UploadOne.vue'
+
+import { articleTypeOptions } from '@/assets/config'
+import { useTagStore } from '@/store'
+import api from '@/api'
+
+defineOptions({ name: '发布文章' })
+
+const route = useRoute()
+// const router = useRouter()
+const tagStore = useTagStore()
+
+const categoryOptions = ref([]) // 分类选项
+const tagOptions = ref([]) // 标签选项
+let backTagOptions = [] // 备份标签选项
+
+// 解决同时查看多篇文章, 切换标签不刷新的问题
+watch(route, async () => tagStore.reloadTag())
+
+onMounted(async () => {
+    fetchData()
+})
+
+onActivated(async () => {
+    fetchData()
+})
+
+async function fetchData() {
+    getArticleInfo()
+    api.getCategoryOption().then((resp) => {
+        categoryOptions.value = resp.data.map(e => ({ value: e.label, label: e.label }))
+    })
+    api.getTagOption().then((resp) => {
+        tagOptions.value = resp.data.map(e => ({ value: e.label, label: e.label }))
+        backTagOptions = tagOptions.value
+    })
+    await nextTick()
+}
+
+const formRef = ref(null)
+const formModel = ref({
+    title: '',
+    status: 1, // 发布形式: 默认公开
+    is_top: false, // 默认不置顶
+    type: 1, // 默认原创
+    tag_names: [],
+    category_name: '',
+})
+const btnLoading = ref(false)
+const modalVisible = ref(false)
+const newTag = ref(null) // 新增标签
+
+// 监听已选标签, 实时更新可选择的标签
+watch(() => formModel.value.tag_names, (newVal) => {
+    tagOptions.value = backTagOptions.filter(e => !newVal.includes(e.label))
+}, { deep: true })
+
+// 根据路由中的 id 参数获取文章信息
+async function getArticleInfo() {
+    const id = route.params.id // 路由中获取参数
+
+    // 没有 id, 表示是新增文章
+    if (!id) {
+        formModel.value = { status: 1, is_top: false, title: '', type: 1 }
+        return
+    }
+
+    // 存在 id, 表示是编辑文章
+    window.$loadingBar?.start()
+    try {
+        const resp = await api.getArticleById(id)
+        const { category, tags } = resp.data
+        formModel.value = resp.data
+        formModel.value.tag_names = tags.map(e => e.name)
+        formModel.value.category_name = category.name
+        window.$loadingBar?.finish()
+    }
+    catch (err) {
+        window.$loadingBar?.error()
+        $message?.error('加载失败')
+    }
+}
+
+// TODO: 保存草稿
+function handleDraft() {
+    $message.info('保存草稿开发中')
+}
+
+// 发布文章
+function handlePublish() {
+    if (!formModel.value.title || !formModel.value.title?.trim()) {
+        formModel.value.title = formModel.value.title?.trim()
+        $message.info('请输入标题')
+        return
+    }
+    modalVisible.value = true
+}
+
+// 保存
+async function handleSave() {
+    formRef.value?.validate(async (err) => {
+        if (!err) {
+            btnLoading.value = true
+            // $message.loading('正在保存...')
+            try {
+                await api.saveOrUpdateArticle(formModel.value)
+                modalVisible.value = false
+                $message.success('操作成功!')
+                // 关闭当前标签, 并跳转回文章列表
+                tagStore.removeTag(route.path)
+                // await router.replace({ path: '/article/list', query: { needRefresh: true } })
+            }
+            catch (err) {
+                console.error(err)
+            }
+            finally {
+                btnLoading.value = false
+            }
+        }
+    })
+}
+
+const rules = {
+    category_name: {
+        required: true,
+        message: '请选择文章分类',
+        trigger: ['blur', 'change'],
+    },
+    tag_names: {
+        required: true,
+        message: '请选择文章标签',
+    },
+}
+
+// 渲染标签
+function renderTag(tag, index) {
+    return h(
+        NTag,
+        {
+            type: 'info',
+            disabled: index > 3,
+            closable: true,
+            onClose: () => formModel.value.tag_names.splice(index, 1),
+        },
+        { default: () => tag },
+    )
+}
+</script>
+
+<style lang="scss" scoped>
+.md-preview {
+    ul,
+    ol {
+        list-style: revert;
+    }
+}
+</style>
+```
 
 
 
