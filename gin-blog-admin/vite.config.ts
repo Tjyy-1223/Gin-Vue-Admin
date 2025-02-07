@@ -29,7 +29,7 @@ export default defineConfig((configEnv) => {
       open: false,
       proxy: {
         '/api': {
-          target: env.VITE_BACKEND_URL,
+          target: env.VITE_SERVER_URL,
           changeOrigin: true,
         },
       },

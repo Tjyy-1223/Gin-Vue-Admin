@@ -22,4 +22,14 @@ hljs.registerLanguage('json', json)
 const themeStore = useThemeStore()
 </script>
 
-<style lang="scss" scoped></style>
+<style scoped>
+html,
+body {
+  height: 100%;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+}
+</style>

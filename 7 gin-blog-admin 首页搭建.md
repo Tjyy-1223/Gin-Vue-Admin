@@ -602,8 +602,28 @@ export async function addDynamicRoutes() {
             : permissionStore.generateRoutesFront(['admin']) // ! 前端生成路由 (根据角色), 待完善
         console.log(accessRoutes)
 
-        // 将当前没有的路由添加进去
-        accessRoutes.forEach(route => !router.hasRoute(route.name) && router.addRoute(route))
+        accessRoutes.forEach(route => {
+            // 检查父路由名称是否冲突
+            if (router.hasRoute(route.name)) {
+                console.warn(`Route with name "${route.name}" already exists.`);
+                return; // 跳过已存在的父路由
+            }
+
+            // 检查子路由名称是否冲突，并修改冲突的子路由名称
+            if (route.children) {
+                route.children.forEach(child => {
+                    if (router.hasRoute(child.name) || child.name === route.name) {
+                        // 如果子路由名称与父路由或已存在的路由冲突
+                        console.warn(`Child route with name "${child.name}" conflicts with parent or existing route. Renaming...`);
+                        // 修改子路由名称
+                        child.name = `${route.name}-${child.name}`;
+                    }
+                });
+            }
+
+            // 添加父路由
+            router.addRoute(route);
+        });
     }
     catch (err) {
         console.error('addDynamicRoutes Error: ', err)
