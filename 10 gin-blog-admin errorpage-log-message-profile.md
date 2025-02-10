@@ -360,7 +360,669 @@ export default {
 
 ## 10.3 message
 
+### 10.3.1 comment
 
+![image-20250210184813137](./assets/image-20250210184813137.png)
+
+这段代码是一个用于评论管理的 Vue 3 组件，结合了 `Naive UI` 组件库来实现前端功能。它实现了对评论的增、删、改、查操作，主要功能包括评论的展示、查询、批量操作、评论审核状态的修改等。
+
+主要功能分析：
+
+1. **页面布局和结构**:
+   - 使用了 `CommonPage` 组件作为页面的基础结构，并设置了页面标题为 "评论管理"。
+   - 通过 `NTabs` 和 `NTabPane` 实现了评论筛选功能，可以按评论状态进行切换（全部、已通过、审核中）。
+   - 使用了 `CrudTable` 组件展示评论列表，支持分页、筛选和排序功能。
+2. **评论表格展示**:
+   - 通过 columns 定义了表格的各列内容，包括：
+     - **选择框列**：用于多选评论，支持批量操作。
+     - **头像**：通过 `NImage` 显示评论者的头像，支持加载失败时显示占位图。
+     - **评论人**：显示评论者的昵称，若没有昵称则显示 "无"。
+     - **评论类型**：根据评论类型显示不同的标签，区分 "文章" 和 "友链"。
+     - **回复对象**：显示评论的回复对象昵称，若没有则显示 "-".
+     - **评论内容**：显示评论的文本内容，并支持溢出显示为 Tooltip。
+     - **评论时间**：显示评论的创建时间，且使用 `NButton` 来渲染时间，点击可触发更新操作。
+     - **评论状态**：通过 `NTag` 显示评论审核状态，`通过` 或 `审核中`。
+     - **来源**：显示评论的来源类型，标签显示不同的颜色和名称。
+     - **操作**：提供 `撤下`、`通过` 和 `删除` 操作按钮。撤下和通过按钮会修改评论的审核状态，而删除按钮会弹出确认框来删除选中的评论。
+3. **批量操作**:
+   - 在页面顶部的 action 插槽中，有两个批量操作按钮：
+     - **批量删除**：删除选中的评论。
+     - **批量通过**：将选中的评论标记为已通过。
+   - 这两个按钮会根据表格中是否有选中项来决定是否可用。
+4. **查询和筛选**:
+   - 在表格上方有一个查询栏，使用 QueryItem 组件提供了两个筛选项：
+     - **用户**：可以输入评论人的昵称来过滤评论。
+     - **来源**：可以选择评论来源，支持从 `commentTypeOptions` 中选择，提供文章或友链等类型的筛选。
+5. **状态切换**:
+   - `handleChangeTab` 方法用于根据标签切换不同的评论状态，筛选出 "全部"、"通过" 或 "审核中" 的评论，传递 `extraParams` 作为筛选条件。
+
+重要的逻辑处理：
+
+- **批量删除**：点击批量删除按钮时，判断是否有选中的评论。如果有选中项，则调用 `handleDelete` 方法删除选中的评论。
+- **批量通过**：点击批量通过按钮时，调用 `handleUpdateReview` 方法，将选中的评论标记为 "已通过"。
+- **评论审核状态的修改**：每个评论的状态通过 `handleUpdateReview` 方法修改，直接调用 API 更新评论状态，状态变化后刷新表格数据。
+- **删除操作**：点击每个评论的删除按钮时，会弹出确认框，通过 `NPopconfirm` 组件来确认是否删除。
+
+组件使用情况：
+
+- **`CrudTable`** 组件：这是一个自定义的表格组件，显示评论数据，并支持查询、排序、分页等功能。通过 `v-model:query-items` 和 `extra-params` 来传递查询条件。
+- **`QueryItem`** 组件：用于封装每一个查询条件项（如用户昵称和来源），提供输入框和下拉框的 UI。
+- **`NPopconfirm`**：这是一个确认框，删除操作时弹出确认删除的提示。
+- **`NButton`、`NImage`、`NTag`** 等 Naive UI 组件：用于构建按钮、显示图片、标签等 UI 元素。
+
+```vue
+<template>
+    <CommonPage title="评论管理">
+        <template #action>
+            <NButton type="error" :disabled="!$table?.selections.length" @click="handleDelete($table?.selections)">
+                <template #icon>
+                    <p class="i-material-symbols:recycling-rounded" />
+                </template>
+                批量删除
+            </NButton>
+            <NButton type="success" :disabled="!$table?.selections.length"
+                @click="handleUpdateReview($table.selections, true)">
+                <template #icon>
+                    <p class="i-ic:outline-approval" />
+                </template>
+                批量通过
+            </NButton>
+        </template>
+        <NTabs type="line" animated @update:value="handleChangeTab">
+            <template #prefix>
+                状态
+            </template>
+            <NTabPane name="all" tab="全部" />
+            <NTabPane name="has_review" tab="通过" />
+            <NTabPane name="not_review" tab="审核中" />
+        </NTabs>
+        <CrudTable ref="$table" v-model:query-items="queryItems" :extra-params="extraParams" :columns="columns"
+            :get-data="api.getComments">
+            <template #queryBar>
+                <QueryItem label="用户" :label-width="40" :content-width="180">
+                    <NInput v-model:value="queryItems.nickname" clearable type="text" placeholder="请输入用户昵称"
+                        @keydown.enter="$table?.handleSearch()" />
+                </QueryItem>
+                <QueryItem label="来源" :label-width="40" :content-width="160">
+                    <NSelect v-model:value="queryItems.type" clearable filterablec placeholder="请选择评论来源"
+                        :options="commentTypeOptions" @update:value="$table?.handleSearch()" />
+                </QueryItem>
+            </template>
+        </CrudTable>
+    </CommonPage>
+</template>
+
+
+<script setup>
+import { h, onMounted, ref } from 'vue'
+import { NButton, NImage, NInput, NPopconfirm, NSelect, NTabPane, NTabs, NTag } from 'naive-ui'
+
+import CommonPage from '@/components/common/CommonPage.vue'
+import QueryItem from '@/components/crud/QueryItem.vue'
+import CrudTable from '@/components/crud/CrudTable.vue'
+
+import { commentTypeMap, commentTypeOptions } from '@/assets/config'
+import { convertImgUrl, formatDate } from '@/utils'
+import { useCRUD } from '@/composables'
+import api from '@/api'
+
+// 设置组件的名称
+defineOptions({ name: '评论管理' })
+
+// 组件挂载完成后，默认显示所有评论
+onMounted(() => {
+    handleChangeTab('all') // 默认查看全部
+})
+
+// 定义响应式引用
+const $table = ref(null) // 用来引用 CrudTable 组件实例
+const queryItems = ref({
+    nickname: '', // 搜索条件：评论人昵称
+    type: '', // 搜索条件：评论类型
+})
+const extraParams = ref({
+    is_review: null, // 评论状态：审核中 | 通过
+})
+
+// 使用自定义的 useCRUD hook 处理删除操作
+const { handleDelete } = useCRUD({
+    name: '评论', // 资源名称
+    doDelete: api.deleteComments, // 删除 API
+    refresh: () => $table.value?.handleSearch(), // 删除后刷新表格
+})
+
+// 表格列的配置
+const columns = [
+    { type: 'selection', width: 15, fixed: 'left' }, // 选择框列
+    {
+        title: '头像', // 列标题：头像
+        key: 'avatar', // 列字段：头像
+        width: 40, // 列宽
+        align: 'center', // 内容居中对齐
+        render(row) {
+            return h(NImage, {
+                'height': 40,
+                'imgProps': { style: { 'border-radius': '3px' } }, // 设置图片圆角
+                'src': convertImgUrl(row.user?.info?.avatar), // 获取用户头像 URL
+                'fallback-src': 'http://dummyimage.com/400x400', // 如果头像加载失败，显示占位图
+                'show-toolbar-tooltip': true,
+            })
+        },
+    },
+    {
+        title: '评论人', // 列标题：评论人
+        key: 'nickname', // 列字段：评论人昵称
+        width: 50, // 列宽
+        align: 'center',
+        ellipsis: { tooltip: true }, // 超过宽度时显示 tooltip
+        render(row) {
+            return h('span', row.user?.info?.nickname || '无') // 显示评论人的昵称，若为空则显示 "无"
+        },
+    },
+    // TODO: 合理的显示评论的文章信息
+    {
+        title: '评论类型', // 列标题：评论类型
+        key: '', // 没有直接映射的字段
+        width: 50,
+        align: 'center',
+        render(row) {
+            if (row.type === 1) { // 如果评论类型是 1，则显示 "文章"
+                return [
+                    h(NTag, { type: 'info' }, { default: () => '文章' }),
+                ]
+            }
+            if (row.type === 2) { // 如果评论类型是 2，则显示 "友链"
+                return h(NTag, { type: 'success' }, { default: () => '友链' })
+            }
+        },
+    },
+    {
+        title: '回复对象', // 列标题：回复对象
+        key: 'reply_nick_name', // 列字段：回复对象昵称
+        width: 50,
+        align: 'center',
+        render(row) {
+            return h('span', row.reply_user?.info?.nickname || '-') // 显示回复对象的昵称，若为空则显示 "-"
+        },
+    },
+    {
+        title: '评论内容', // 列标题：评论内容
+        key: 'content', // 列字段：评论内容
+        width: 140, // 列宽
+        align: 'center',
+        ellipsis: { tooltip: true }, // 超过宽度时显示 tooltip
+    },
+    {
+        title: '评论时间', // 列标题：评论时间
+        key: 'created_at', // 列字段：评论创建时间
+        align: 'center',
+        width: 60,
+        render(row) {
+            return h(
+                NButton,
+                { size: 'small', type: 'text', ghost: true }, // 按钮类型为文本，外观透明
+                {
+                    default: () => formatDate(row.created_at), // 格式化评论时间
+                    icon: () => h('i', { class: 'i-mdi:update' }), // 设置图标
+                },
+            )
+        },
+    },
+    {
+        title: '状态', // 列标题：评论状态
+        key: 'is_review', // 列字段：评论审核状态
+        width: 50,
+        align: 'center',
+        render(row) {
+            return h(
+                NTag,
+                { type: row.is_review ? 'success' : 'error' }, // 根据审核状态显示不同颜色
+                { default: () => (row.is_review ? '通过' : '审核中') }, // 显示 "通过" 或 "审核中"
+            )
+        },
+    },
+    {
+        title: '来源', // 列标题：来源
+        key: 'type', // 列字段：评论类型
+        width: 50,
+        align: 'center',
+        render(row) {
+            return h(
+                NTag,
+                { type: commentTypeMap[row.type].tag }, // 根据评论类型显示不同的标签
+                { default: () => commentTypeMap[row.type].name }, // 显示评论类型的名称
+            )
+        },
+    },
+    {
+        title: '操作', // 列标题：操作
+        key: 'actions', // 列字段：操作
+        width: 100,
+        align: 'center',
+        fixed: 'right', // 操作列固定在右侧
+        render(row) {
+            return [
+                // 根据评论审核状态显示不同的按钮：通过 / 撤下
+                row.is_review
+                    ? h(
+                        NButton,
+                        {
+                            size: 'small',
+                            type: 'warning',
+                            style: 'margin-left: 15px;', // 按钮间隔
+                            onClick: () => handleUpdateReview([row.id], false), // 点击撤下按钮
+                        },
+                        {
+                            default: () => '撤下', // 按钮文本
+                            icon: () => h('i', { class: 'i-mi:circle-error' }), // 图标
+                        },
+                    )
+                    : h(
+                        NButton,
+                        {
+                            size: 'small',
+                            type: 'success',
+                            style: 'margin-left: 15px;', // 按钮间隔
+                            onClick: () => handleUpdateReview([row.id], true), // 点击通过按钮
+                        },
+                        {
+                            default: () => '通过',
+                            icon: () => h('i', { class: 'i-mi:circle-check' }),
+                        },
+                    ),
+                // 删除操作，点击确认删除
+                h(
+                    NPopconfirm,
+                    { onPositiveClick: () => handleDelete([row.id], false) }, // 点击删除确认按钮时触发删除
+                    {
+                        trigger: () =>
+                            h(
+                                NButton,
+                                { size: 'small', type: 'error', style: 'margin-left: 15px;' },
+                                { default: () => '删除', icon: () => h('i', { class: 'i-material-symbols:delete-outline' }) },
+                            ),
+                        default: () => h('div', {}, '确定删除该条评论吗?'), // 删除确认提示文本
+                    },
+                ),
+            ]
+        },
+    },
+]
+
+// 修改评论审核状态
+async function handleUpdateReview(ids, is_review) {
+    if (!ids.length) {
+        window.$message.info('请选择要审核的数据') // 如果没有选择评论，弹出提示
+        return
+    }
+    // 调用 API 更新评论审核状态
+    await api.updateCommentReview(ids, is_review)
+    // 提示成功或失败
+    window.$message?.success(is_review ? '审核成功' : '撤下成功')
+    // 刷新表格
+    $table.value?.handleSearch()
+}
+
+// 切换标签页，筛选不同的评论状态：全部、通过、审核中
+function handleChangeTab(value) {
+    switch (value) {
+        case 'all':
+            extraParams.value.is_review = null // 查看全部评论
+            break
+        case 'has_review': // 通过
+            extraParams.value.is_review = true
+            break
+        case 'not_review': // 审核中
+            extraParams.value.is_review = false
+            break
+    }
+    // 切换标签后刷新表格
+    $table.value?.handleSearch()
+}
+
+</script>
+
+<style lang="scss" scoped></style>
+```
+
+
+
+### 10.3.2 leave-msg
+
+![image-20250210184842017](./assets/image-20250210184842017.png)
+
+这段代码是一个用于管理留言内容的 Vue 3 组件，主要实现了留言的展示、审核、删除、批量操作等功能。它结合了 `Naive UI` 组件库来构建界面，并使用了自定义的 `useCRUD` hook 来简化对 API 的操作。
+
+1. **页面结构**：
+   - `CommonPage` 组件作为页面的外层容器，提供统一的布局结构和页面标题 "留言管理"。
+   - 页面顶部有两个操作按钮：批量删除和批量通过，分别用于删除和审核通过选中的留言。
+   - 使用 `NTabs` 和 `NTabPane` 来显示不同状态的留言，包括全部、已通过和审核中的留言。
+   - `CrudTable` 组件用于展示留言列表，支持查询、筛选和分页等功能。
+2. **表格显示**：
+   - CrudTable 中使用了 columns 定义表格的列，包括：
+     - **选择框列**：支持批量操作，选择多个留言。
+     - **头像**：使用 `NImage` 显示留言者头像，若加载失败则显示占位图。
+     - **留言人昵称**：显示留言人的昵称，使用 `ellipsis` 属性在内容过长时显示 tooltip。
+     - **留言内容**：显示留言的具体内容，列宽为 120px。
+     - **IP 地址** 和 **IP 来源**：显示留言者的 IP 地址及其来源。
+     - **留言时间**：使用 `NButton` 渲染留言的创建时间，点击后可以查看时间更新。
+     - **状态**：显示留言的审核状态（通过或审核中），使用 `NTag` 显示不同的颜色。
+     - **操作**：根据留言的审核状态提供 "通过" 或 "撤下" 操作按钮，并提供删除按钮，点击删除时会弹出确认框。
+3. **批量操作**：
+   - 在页面顶部的 action插槽中，有两个批量操作按钮：
+     - **批量删除**：点击后会删除选中的留言。
+     - **批量通过**：点击后会将选中的留言标记为已通过。
+   - 两个按钮的可用性取决于是否有选中的留言。
+4. **查询和筛选**：
+   - 在 `CrudTable` 组件上方有一个查询栏，用于通过留言者的昵称（`nickname`）进行搜索，输入内容后按 `Enter` 键可以触发表格的查询。
+   - 通过 `NTabs` 实现留言状态的筛选，用户可以选择查看 "全部"、"已通过" 或 "审核中" 的留言。
+5. **状态切换**：
+   - handleChangeTab 函数用于切换标签页时更新筛选条件。通过 extraParams 来控制不同状态下的留言显示：
+     - **全部**：显示所有留言。
+     - **已通过**：显示审核通过的留言。
+     - **审核中**：显示审核中的留言。
+
+重要的逻辑处理：
+
+1. **批量删除操作**：
+   - 在点击批量删除按钮时，先判断是否有选中的留言。如果有选中项，则调用 `handleDelete` 方法批量删除这些留言。
+2. **批量审核通过**：
+   - 在点击批量通过按钮时，调用 `handleUpdateReview` 方法，批量将选中的留言标记为 "通过"。
+3. **留言审核状态的修改**：
+   - `handleUpdateReview` 方法用于单条或批量修改留言的审核状态。通过调用 API 更新留言状态，并在操作完成后刷新表格。
+   - 在每个操作按钮（"通过"、"撤下"）上，依据留言当前的状态来决定按钮的显示和点击后的行为。
+4. **删除操作**：
+   - 每条留言的操作列提供删除按钮。点击删除按钮时，会弹出确认框，用户确认后会触发删除操作。
+5. **IP 来源渲染**：
+   - `ip_source` 是可选字段，若没有值则显示 "未知"。
+6. **表格内容溢出处理**：
+   - 使用 `ellipsis: { tooltip: true }` 使得超长内容（如 IP 地址、留言内容）可以通过 tooltip 显示完全内容。
+
+```vue
+<template>
+    <CommonPage title="留言管理">
+        <template #action>
+            <NButton type="error" :disabled="!$table?.selections.length" @click="handleDelete($table?.selections)">
+                <template #icon>
+                    <p class="i-material-symbols:recycling-rounded" />
+                </template>
+                批量删除
+            </NButton>
+            <NButton type="success" :disabled="!$table?.selections.length"
+                @click="handleUpdateReview($table.selections, true)">
+                <template #icon>
+                    <p class="i-ic:outline-approval" />
+                </template>
+                批量通过
+            </NButton>
+        </template>
+        <NTabs type="line" animated @update:value="handleChangeTab">
+            <template #prefix>
+                状态
+            </template>
+            <NTabPane name="all" tab="全部" />
+            <NTabPane name="has_review" tab="通过" />
+            <NTabPane name="not_review" tab="审核中" />
+        </NTabs>
+        <CrudTable ref="$table" v-model:query-items="queryItems" :extra-params="extraParams" :columns="columns"
+            :get-data="api.getMessages">
+            <template #queryBar>
+                <QueryItem label="用户" :label-width="40" :content-width="180">
+                    <NInput v-model:value="queryItems.nickname" clearable type="text" placeholder="请输入用户昵称"
+                        @keydown.enter=" $table?.handleSearch()" />
+                </QueryItem>
+            </template>
+        </CrudTable>
+    </CommonPage>
+</template>
+
+
+<script setup>
+import { h, onMounted, ref } from 'vue'
+import { NButton, NImage, NInput, NPopconfirm, NTabPane, NTabs, NTag } from 'naive-ui'
+
+import CommonPage from '@/components/common/CommonPage.vue'
+import QueryItem from '@/components/crud/QueryItem.vue'
+import CrudTable from '@/components/crud/CrudTable.vue'
+
+import { convertImgUrl, formatDate } from '@/utils'
+import { useCRUD } from '@/composables'
+import api from '@/api'
+
+// 设置组件的名称
+defineOptions({ name: '留言管理' })
+
+// 组件挂载完成后，默认显示所有留言
+onMounted(() => {
+    handleChangeTab('all') // 默认查看全部
+})
+
+// 定义响应式引用
+const $table = ref(null) // 用来引用 CrudTable 组件实例
+const queryItems = ref({
+    nickname: '', // 搜索条件：留言人昵称
+})
+const extraParams = ref({
+    is_review: null, // 评论状态：审核中 | 通过
+})
+
+// 使用自定义的 useCRUD hook 处理删除操作
+const { handleDelete } = useCRUD({
+    name: '留言', // 资源名称
+    doDelete: api.deleteMessages, // 删除 API
+    refresh: () => $table.value?.handleSearch(), // 删除后刷新表格
+})
+
+// 表格列的配置
+const columns = [
+    { type: 'selection', width: 15, fixed: 'left' }, // 选择框列
+    {
+        title: '头像', // 列标题：头像
+        key: 'avatar', // 列字段：头像
+        width: 40, // 列宽
+        align: 'center', // 内容居中对齐
+        render(row) {
+            return h(NImage, {
+                'height': 40,
+                'imgProps': { style: { 'border-radius': '3px' } }, // 设置图片圆角
+                'src': convertImgUrl(row.avatar), // 获取头像 URL
+                'fallback-src': 'http://dummyimage.com/400x400', // 如果头像加载失败，显示占位图
+                'show-toolbar-tooltip': true,
+            })
+        },
+    },
+    {
+        title: '留言人',
+        key: 'nickname',
+        width: 60,
+        align: 'center',
+        ellipsis: { tooltip: true }, // 超过宽度时显示 tooltip
+    },
+    {
+        title: '留言内容',
+        key: 'content',
+        width: 120,
+        align: 'center',
+    },
+    {
+        title: 'IP 地址',
+        key: 'ip_address',
+        width: 70,
+        align: 'center',
+        ellipsis: { tooltip: true },
+    },
+    {
+        title: 'IP 来源',
+        key: 'ip_source',
+        width: 70,
+        align: 'center',
+        ellipsis: { tooltip: true },
+        render(row) {
+            return h('span', row.ip_source || '未知') // 显示 IP 来源，若为空则显示 "未知"
+        },
+    },
+    {
+        title: '留言时间',
+        key: 'created_at',
+        align: 'center',
+        width: 80,
+        render(row) {
+            return h(
+                NButton,
+                { size: 'small', type: 'text', ghost: true },
+                {
+                    default: () => formatDate(row.created_at), // 格式化时间
+                    icon: () => h('i', { class: 'i-mdi:update' }), // 设置图标
+                },
+            )
+        },
+    },
+    {
+        title: '状态',
+        key: 'is_review',
+        width: 50,
+        align: 'center',
+        render(row) {
+            return h(
+                NTag,
+                { type: row.is_review ? 'success' : 'error' }, // 根据状态显示不同颜色
+                { default: () => (row.is_review ? '通过' : '审核中') },
+            )
+        },
+    },
+    {
+        title: '操作',
+        key: 'actions',
+        width: 100,
+        align: 'center',
+        fixed: 'right', // 操作列固定在右侧
+        render(row) {
+            return [
+                // 根据评论状态显示不同的按钮：通过 / 撤下
+                row.is_review
+                    ? h(
+                        NButton,
+                        {
+                            size: 'small',
+                            type: 'warning',
+                            onClick: () => handleUpdateReview([row.id], false), // 点击撤下按钮
+                        },
+                        {
+                            default: () => '撤下', // 按钮文本
+                            icon: () => h('i', { class: 'i-mi:circle-error' }), // 图标
+                        },
+                    )
+                    : h(
+                        NButton,
+                        {
+                            size: 'small',
+                            type: 'success',
+                            style: 'margin-left: 15px;', // 按钮间隔
+                            onClick: () => handleUpdateReview([row.id], true), // 点击通过按钮
+                        },
+                        {
+                            default: () => '通过',
+                            icon: () => h('i', { class: 'i-mi:circle-check' }),
+                        },
+                    ),
+                // 删除操作，点击确认删除
+                h(
+                    NPopconfirm,
+                    { onPositiveClick: () => handleDelete([row.id], false) }, // 点击删除确认按钮时触发删除
+                    {
+                        trigger: () =>
+                            h(
+                                NButton,
+                                { size: 'small', type: 'error', style: 'margin-left: 15px;' },
+                                { default: () => '删除', icon: () => h('i', { class: 'i-material-symbols:delete-outline' }) },
+                            ),
+                        default: () => h('div', {}, '确定删除该条留言吗?'), // 删除确认提示文本
+                    },
+                ),
+            ]
+        },
+    },
+]
+
+// 修改留言审核状态
+async function handleUpdateReview(ids, is_review) {
+    if (!ids.length) {
+        $message.info('请选择要审核的数据') // 如果没有选择留言，弹出提示
+        return
+    }
+
+    // 调用 API 更新留言审核状态
+    await api.updateMessageReview(ids, is_review)
+    // 提示成功或失败
+    $message?.success(is_review ? '审核成功' : '撤下成功')
+    // 刷新表格
+    $table.value?.handleSearch()
+}
+
+// 切换标签页，筛选不同的留言状态：全部、通过、审核中
+function handleChangeTab(value) {
+    switch (value) {
+        case 'all':
+            extraParams.value.is_review = null // 查看全部留言
+            break
+        case 'has_review': // 通过
+            extraParams.value.is_review = 1
+            break
+        case 'not_review': // 审核中
+            extraParams.value.is_review = 0
+            break
+    }
+    // 切换标签后刷新表格
+    $table.value?.handleSearch()
+}
+</script>
+
+<style lang="scss" scoped></style>
+```
+
+
+
+### 10.3.3 route.js
+
+```javascript
+const Layout = () => import('@/layout/index.vue')
+
+export default {
+  name: 'Message',
+  path: '/message',
+  component: Layout,
+  redirect: '/message/comment',
+  meta: {
+    title: '消息管理',
+    icon: 'ic:twotone-email',
+    order: 3,
+    // role: ['admin'],
+    // requireAuth: true,
+  },
+  children: [
+    {
+      name: 'CommentList',
+      path: 'comment',
+      component: () => import('./comment/index.vue'),
+      meta: {
+        title: '评论管理',
+        icon: 'ic:twotone-comment',
+        keepAlive: true,
+      },
+    },
+    {
+      name: 'LeaveMsgList',
+      path: 'leave-msg',
+      component: () => import('./leave-msg/index.vue'),
+      meta: {
+        title: '留言管理',
+        icon: 'ic:twotone-message',
+        keepAlive: true,
+      },
+    },
+  ],
+}
+```
 
 
 
