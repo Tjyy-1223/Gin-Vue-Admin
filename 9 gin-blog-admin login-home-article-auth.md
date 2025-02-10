@@ -777,7 +777,7 @@ export default {
 
 
 
-### 9.4.2 category/index.js
+### 9.4.2 category/index.vue
 
 #### 1 CommonPage.vue
 
@@ -1636,7 +1636,7 @@ const columns = [
 
 
 
-### 9.4.3 list/index.js
+### 9.4.3 list/index.vue
 
 ![image-20250207185136315](./assets/image-20250207185136315.png)
 
@@ -2034,7 +2034,7 @@ function downloadFile(content, fileName) {
 
 
 
-### 9.4.4 tag/index.js
+### 9.4.4 tag/index.vue
 
 ![image-20250207214458886](./assets/image-20250207214458886.png)
 
@@ -2211,7 +2211,7 @@ function handleSorterChange(sorter) {
 
 
 
-### 9.4.5 write/index.js
+### 9.4.5 write/index.vue
 
 #### 1 UploadOne.vue
 
@@ -2647,4 +2647,1253 @@ function renderTag(tag, index) {
 
 
 ## 9.5 Auth 相关界面搭建
+
+### 9.5.1 menu/index.vue
+
+#### 1 IconPicker.vue
+
+```vue
+<template>
+    <div class="w-full">
+        <NPopover trigger="click" placement="bottom-start">
+            <template #trigger>
+                <NInput v-model:value="choosed" placeholder="请输入图标名称" @update:value="filterIcons">
+                    <template #prefix>
+                        <span class="i-mdi:magnify text-base" />
+                    </template>
+                    <template #suffix>
+                        <TheIcon :icon="choosed" :size="18" />
+                    </template>
+                </NInput>
+            </template>
+            <template #footer>
+                更多图标去
+                <a class="text-blue" target="_blank" href="https://icones.js.org/collection/all">
+                    Icones
+                </a>
+                查看
+            </template>
+            <ul v-if="icons.length" class="h-[150px] w-[300px] overflow-y-scroll">
+                <li v-for="(icon, index) in icons" :key="index"
+                    class="mx-1.5 inline-block cursor-pointer hover:text-cyan" @click="selectIcon(icon)">
+                    <TheIcon :icon="icon" :size="18" />
+                </li>
+            </ul>
+            <div v-else>
+                <TheIcon :icon="choosed" :size="18" />
+            </div>
+        </NPopover>
+    </div>
+</template>
+
+
+<script setup>
+import { ref } from 'vue'
+import { watchDebounced } from '@vueuse/core'
+import { NInput, NPopover } from 'naive-ui'
+
+import TheIcon from './TheIcon.vue'
+import iconData from '@/assets/icons'
+
+const props = defineProps({ value: String })
+const emit = defineEmits(['update:value'])
+
+const choosed = ref(props.value) // 选中值
+const icons = ref(iconData.filter(icon => icon.includes(choosed.value))) // 可选图标列表
+
+function filterIcons() {
+    icons.value = iconData.filter(item => item.includes(choosed.value))
+}
+
+function selectIcon(icon) {
+    choosed.value = icon
+    emit('update:value', choosed.value)
+}
+
+watchDebounced(choosed, () => {
+    filterIcons()
+    emit('update:value', choosed.value)
+}, { debounce: 500 })
+</script>
+
+<style lang="scss" scoped></style>
+```
+
+**这个组件的作用是提供一个图标选择器。用户可以在输入框中输入图标名称，通过过滤图标列表来选择一个图标。用户点击图标后，选中的图标会显示在输入框中，并通过事件传递给父组件。整个过程配合防抖处理来减少不必要的图标过滤操作。组件的设计简洁而高效，适用于需要用户选择图标的场景。**
+
+这段代码是一个用于图标选择的组件，允许用户从一组图标中选择一个，并在输入框中输入图标名称来过滤图标列表。下面是详细分析：
+
+1. **模板部分**（`<template>`）
+
+- **NPopover**：这是 Naive UI 的弹出层组件，`trigger="click"` 表示点击触发弹出，`placement="bottom-start"` 表示弹出框的位置在触发元素的下方，偏左。
+  - **#trigger**：自定义触发内容，使用 `NInput` 作为输入框，用户可以输入图标名称进行搜索。`@update:value="filterIcons"` 监听输入框的内容变化，调用 `filterIcons` 方法来过滤图标。
+    - **prefix**：在输入框的前缀显示一个放大镜图标 (`i-mdi:magnify`)，作为搜索提示。
+    - **suffix**：输入框的后缀显示一个图标（`choosed`），这是当前选中的图标。
+  - **#footer**：弹出框的底部，提供一个链接，指向外部图标库（Icones）以查看更多图标。
+  - **图标列表**：如果 `icons` 数组中有数据（即符合搜索条件的图标），则以列表形式展示图标，用户可以点击图标来选择它。每个图标在点击时会触发 `selectIcon` 方法，将选中的图标传递给父组件。
+  - **默认展示图标**：如果没有符合条件的图标，则显示当前选中的图标（`choosed`）。
+
+2. **脚本部分**（`<script setup>`）
+
+- **响应式变量**：
+  - `choosed`：表示当前选中的图标，初始值为 `props.value`。这是双向绑定的值，代表输入框和图标的选择状态。
+  - `icons`：表示符合搜索条件的图标列表，初始值是根据 `choosed` 过滤出来的图标。
+- **过滤图标**（`filterIcons`）：根据 `choosed` 输入的值，过滤出包含该值的图标。每次用户输入内容时调用此方法来更新图标列表。
+- **选择图标**（`selectIcon`）：用户点击某个图标时，选择该图标并更新 `choosed` 变量，同时通过 `emit('update:value', choosed.value)` 将选中的图标传递给父组件，实现双向绑定。
+- **防抖处理**（`watchDebounced`）：
+  - 通过 `watchDebounced` 对 `choosed` 进行监听，避免每次输入都立即过滤图标。设置了 `debounce: 500`，意味着用户输入后500毫秒才会触发过滤操作，这样可以减少不必要的计算和网络请求。
+  - 每次 `choosed` 变化时，都会调用 `filterIcons` 过滤图标并更新父组件的 `value`。
+
+
+
+#### 2 index.vue
+
+<img src="./assets/image-20250210153703718.png" alt="image-20250210153703718" style="zoom:67%;" />
+
+<img src="./assets/image-20250210153730354.png" alt="image-20250210153730354" style="zoom:67%;" />
+
+这段代码实现了一个 **菜单管理系统**，主要用于展示和管理菜单项（如添加、编辑、删除菜单项等）。页面使用了 **Vue 3** 和 **Naive UI**，通过自定义组件和一些封装的逻辑来完成增、删、改、查（CRUD）操作。下面我们从各个方面对这段代码进行分析：
+
+1. **模板部分 (`<template>`)**
+
+**CommonPage 组件**
+
+- `CommonPage` 是整个页面的容器，负责展示标题 "菜单管理"。
+- `#action` 插槽中有一个 **"新建菜单"** 按钮，点击时调用 `handleClickAdd` 方法，这个按钮的作用是打开模态框用于新增菜单。
+
+**CrudTable 组件**
+
+- `CrudTable` 用来展示菜单的列表数据，具体配置如下：
+
+  - `v-model:query-items="queryItems"`：绑定查询条件 `queryItems`，允许根据菜单名进行搜索。
+  - `:is-pagination="false"`：禁用分页功能。
+  - `:columns="columns"`：指定表格的列配置，即菜单的各项属性。
+  - `:get-data="api.getMenus"`：绑定获取数据的 API，获取菜单列表。
+  - `:single-line="true"`：每行展示数据。
+
+  **查询框**（`#queryBar` 插槽）用于输入菜单名进行查询，绑定到 `queryItems.keyword`，并监听 `Enter` 键按下事件触发表格查询。
+
+**CrudModal 组件**
+
+- 用于新增和编辑菜单的模态框组件。
+
+- `v-model:visible="modalVisible"`：控制模态框的显示与隐藏。
+
+- `:title="modalTitle"`：设置模态框的标题，显示为新增或编辑菜单。
+
+- `:loading="modalLoading"`：显示加载状态。
+
+- `@save="handleSave"`：保存操作，触发 `handleSave` 方法。
+
+  模态框中包含了一个 `NForm` 表单，用于输入和编辑菜单的各项信息，包括：
+
+  - **菜单类型**：目录或一级菜单（通过 `NRadioGroup` 控件来选择）。
+  - **菜单名称**、**菜单图标**：通过 `NInput` 和 `IconPicker` 控件输入。
+  - **组件路径、访问路径、跳转路径**：用于填写菜单的路由信息。
+  - **排序、隐藏、外链等状态**：通过 `NInputNumber`、`NSwitch` 控件来输入。
+
+  表单支持对不同类型的菜单显示不同的字段。`is_catalogue` 字段用于标识该菜单是否为目录。
+
+2. **脚本部分 (`<script setup>`)**
+
+**引入模块和组件**
+
+- 使用了 Vue 的核心 API，如 `h`（渲染函数），`ref`（响应式引用），`onMounted`（生命周期钩子）等。
+- 引入了 `Naive UI` 的组件，如 `NButton`, `NForm`, `NSwitch`, `NRadio`, `NTag` 等，用于构建 UI。
+- 引入了自定义组件，如 `CommonPage`, `QueryItem`, `CrudModal`, `CrudTable`, `IconPicker`, `TheIcon`。
+- 引入了 `useCRUD` 组合逻辑，它封装了增删改查的通用操作，简化了菜单的操作代码。
+- `api` 用于调用后端接口进行数据的获取、保存、删除等操作。
+
+**表单数据和状态管理**
+
+- **`queryItems`**：用于保存查询条件，当前只包含 `keyword`（菜单名）。
+
+- **`initForm`**：菜单新增和编辑的初始表单数据，包括 `order_num`（排序）、`is_hidden`（是否隐藏）、`is_catalogue`（是否为目录）等。
+
+  这个对象是新增和编辑菜单时的初始数据。
+
+- `useCRUD` 是一个自定义组合函数，封装了 CRUD 逻辑：
+
+  - `modalVisible`：控制模态框的显示。
+  - `modalTitle`：控制模态框的标题（新增或编辑）。
+  - `modalLoading`：控制模态框的加载状态。
+  - `handleAdd`、`handleDelete`、`handleEdit`、`handleSave` 等方法，用于处理增、删、改、查操作。
+  - `modalForm`：保存模态框中表单的数据。
+  - `modalFormRef`：引用模态框中的表单，便于执行验证等操作。
+
+**表格列配置 (`columns`)**
+
+- **菜单名称**：展示菜单的名称，并根据不同的 `parent_id` 和 `is_catalogue` 渲染不同的标签，表示菜单类型（如目录、一级菜单、子菜单）。
+- **图标**：通过 `TheIcon` 组件渲染图标。
+- **排序、访问路径、跳转路径**：直接展示相应的字段内容。
+- **保活、隐藏**：通过 `NSwitch` 开关组件展示和切换菜单的 "保活" 和 "隐藏" 状态。
+- **更新日期**：通过 `formatDate` 格式化时间显示。
+- **操作**：包括新增、编辑、删除操作按钮。删除按钮使用了 `NPopconfirm` 来确认删除操作。
+
+**`handleUpdateKeepAlive` 和 `handleUpdateHidden` 方法**
+
+- 这两个方法用于更新菜单项的 保活 和 隐藏 状态。
+  - 在操作之前，先修改菜单项的 `publishing` 状态为 `true`，表示正在进行请求。
+  - 调用 API 更新数据，成功后通过 `$message` 提示用户操作结果，失败时会恢复菜单项的原始状态。
+  - 最后将 `publishing` 状态重置为 `false`。
+
+**`handleClickAdd` 方法**
+
+- 该方法用于新增菜单，默认将 `is_catalogue` 设置为 `true`，表示新建的是目录菜单，且 `parent_id` 为 `0`（根菜单）。
+- 调用 `handleAdd` 来打开模态框进行新增操作。
+
+3. **功能总结**
+
+- **菜单管理功能**：实现了菜单的增、删、改、查操作，支持目录菜单和一级菜单的区分。可以设置菜单的名称、图标、路径等信息。
+- **查询功能**：通过查询框支持按菜单名进行搜索。
+- **操作按钮**：每行菜单项提供编辑、删除、添加子菜单等操作。
+- **状态切换**：支持切换菜单的 **保活** 和 **隐藏** 状态，并通过 API 更新。
+
+```vue
+<template>
+    <CommonPage title="菜单管理">
+        <template #action>
+            <NButton type="primary" @click="handleClickAdd">
+                <template #icon>
+                    <span class="i-material-symbols:add" />
+                </template>
+                新建菜单
+            </NButton>
+        </template>
+
+        <CrudTable ref="$table" v-model:query-items="queryItems" :is-pagination="false" :columns="columns"
+            :get-data="api.getMenus" :single-line="true">
+            <template #queryBar>
+                <QueryItem label="菜单名" :label-width="50">
+                    <NInput v-model:value="queryItems.keyword" clearable type="text" placeholder="请输入菜单名"
+                        @keydown.enter="$table?.handleSearch()" />
+                </QueryItem>
+            </template>
+        </CrudTable>
+
+        <CrudModal v-model:visible="modalVisible" :title="modalTitle" :loading="modalLoading" @save="handleSave">
+            <NForm ref="modalFormRef" label-placement="left" label-align="left" :label-width="80" :model="modalForm">
+                <NFormItem v-if="modalForm.parent_id === 0" label="菜单类型" path="type">
+                    <NRadioGroup v-model:value="modalForm.is_catalogue" name="radiogroup">
+                        <NSpace>
+                            <NRadio :value="true">
+                                目录
+                            </NRadio>
+                            <NRadio :value="false">
+                                一级菜单
+                            </NRadio>
+                        </NSpace>
+                    </NRadioGroup>
+                </NFormItem>
+                <NFormItem label="菜单名称" path="name">
+                    <NInput v-model:value="modalForm.name" placeholder="请输入菜单名称" />
+                </NFormItem>
+                <NFormItem label="菜单图标" path="icon">
+                    <IconPicker v-model:value="modalForm.icon" />
+                </NFormItem>
+                <NFormItem v-if="!modalForm.is_catalogue" label="组件路径" path="component">
+                    <NInput v-model:value="modalForm.component" placeholder="请输入组件路径" />
+                </NFormItem>
+                <NFormItem label="访问路径" path="path">
+                    <NInput v-model:value="modalForm.path" placeholder="请输入访问路径" />
+                </NFormItem>
+                <NFormItem v-if="!modalForm.is_catalogue" label="跳转路径" path="redirect">
+                    <NInput v-model:value="modalForm.redirect" :disabled="modalForm.parent_id !== 0"
+                        placeholder="只有一级菜单可以设置跳转路径" />
+                </NFormItem>
+                <NFormItem label="显示排序" path="order_num">
+                    <NInputNumber v-model:value="modalForm.order_num" />
+                </NFormItem>
+                <NFormItem label="是否隐藏" path="is_hidden">
+                    <NSwitch v-model:value="modalForm.is_hidden" />
+                </NFormItem>
+                <NFormItem label="是否外链" path="is_external">
+                    <NSwitch v-model:value="modalForm.is_external" />
+                </NFormItem>
+                <NFormItem label="KeepAlive" path="keep_alive">
+                    <NSwitch v-model:value="modalForm.keep_alive" />
+                </NFormItem>
+            </NForm>
+        </CrudModal>
+    </CommonPage>
+</template>
+
+
+<script setup>
+import { h, onMounted, ref } from 'vue'
+import { NButton, NForm, NFormItem, NInput, NInputNumber, NPopconfirm, NRadio, NRadioGroup, NSpace, NSwitch, NTag } from 'naive-ui'
+
+import CommonPage from '@/components/common/CommonPage.vue'
+import QueryItem from '@/components/crud/QueryItem.vue'
+import CrudModal from '@/components/crud/CrudModal.vue'
+import CrudTable from '@/components/crud/CrudTable.vue'
+import IconPicker from '@/components/icon/IconPicker.vue'
+import TheIcon from '@/components/icon/TheIcon.vue'
+
+import { formatDate } from '@/utils'
+import { useCRUD } from '@/composables'
+import api from '@/api'
+
+defineOptions({ name: '菜单管理' })
+
+const $table = ref(null)
+const queryItems = ref({
+    keyword: '',
+})
+
+const initForm = {
+    order_num: 1,
+    is_hidden: false, // 是否隐藏
+    is_catalogue: false, // 是否目录
+    is_external: false, // 是否外链
+    keep_alive: false,
+    icon: 'mdi-account',
+    order_num: 1,
+    name: '',
+    path: '',
+    redirect: '',
+    component: '',
+    parent_id: 0,
+}
+
+const {
+    modalVisible,
+    modalTitle,
+    modalLoading,
+    handleAdd,
+    handleDelete,
+    handleEdit,
+    handleSave,
+    modalForm,
+    modalFormRef,
+} = useCRUD({
+    name: '菜单',
+    initForm,
+    doCreate: api.saveOrUpdateMenu,
+    doDelete: api.deleteMenu,
+    doUpdate: api.saveOrUpdateMenu,
+    refresh: () => $table.value?.handleSearch(),
+})
+
+onMounted(() => {
+    $table.value?.handleSearch()
+})
+
+const columns = [
+    {
+        title: '菜单名称',
+        key: 'name',
+        width: 100,
+        render: (row) => {
+            const groups = []
+            groups.push(h('span', row.name))
+
+            if (row.parent_id === 0) {
+                groups.push(
+                    h(
+                        NTag,
+                        { type: row.is_catalogue ? 'info' : 'success', class: 'ml-1.5' },
+                        { default: () => row.is_catalogue ? '目录' : '一级菜单' },
+                    ),
+                )
+            }
+            else {
+                groups.push(
+                    h(
+                        NTag,
+                        { type: 'default', class: 'ml-1.5' },
+                        { default: () => '子菜单' },
+                    ),
+                )
+            }
+
+            if (row.is_external) {
+                groups.push(
+                    h(
+                        NTag,
+                        { type: 'warning', class: 'ml-1.5' },
+                        { default: () => '外链' },
+                    ),
+                )
+            }
+
+            return groups
+        },
+    },
+    {
+        title: '图标',
+        key: 'icon',
+        width: 30,
+        render(row) {
+            return h(TheIcon, { icon: row.icon, size: 20 })
+        },
+    },
+    { title: '排序', key: 'order_num', width: 30, ellipsis: { tooltip: true } },
+    { title: '访问路径', key: 'path', width: 60, ellipsis: { tooltip: true } },
+    {
+        title: '跳转路径',
+        key: 'redirect',
+        width: 80,
+        render(row) {
+            if (row.parent_id === 0 && !row.is_catalogue) {
+                return h('span', row.redirect)
+            }
+            return h('span', '-')
+        },
+    },
+    {
+        title: '组件路径',
+        key: 'component',
+        width: 80,
+        render(row) {
+            if (!row.is_catalogue) {
+                return h('span', row.component)
+            }
+            return h('span', '-')
+        },
+    },
+    {
+        title: '保活',
+        key: 'keep_alive',
+        width: 30,
+        fixed: 'left',
+        render(row) {
+            return h(NSwitch, {
+                size: 'small',
+                rubberBand: false,
+                value: row.keep_alive,
+                loading: !!row.publishing,
+                onUpdateValue: () => handleUpdateKeepAlive(row),
+            })
+        },
+    },
+    {
+        title: '隐藏',
+        key: 'is_hidden',
+        width: 30,
+        fixed: 'left',
+        render(row) {
+            return h(NSwitch, {
+                size: 'small',
+                rubberBand: false,
+                value: row.is_hidden,
+                loading: !!row.publishing,
+                onUpdateValue: () => handleUpdateHidden(row),
+            })
+        },
+    },
+    {
+        title: '更新日期',
+        key: 'updated_at',
+        width: 70,
+        render(row) {
+            return h('span', formatDate(row.updated_at))
+        },
+    },
+    {
+        title: '操作',
+        key: 'actions',
+        width: 115,
+        align: 'center',
+        fixed: 'right',
+        render(row) {
+            return [
+                h(
+                    NButton,
+                    {
+                        size: 'tiny',
+                        quaternary: true,
+                        type: 'primary',
+                        style: `display: ${!row.is_catalogue && row.parent_id === 0 ? '' : 'none'};`,
+                        onClick: () => {
+                            initForm.component = '' // 手动清空组件路径
+                            initForm.parent_id = row.id // 设置父菜单id
+                            initForm.is_catalogue = false
+                            handleAdd()
+                        },
+                    },
+                    { default: () => '新增', icon: () => h('i', { class: 'i-material-symbols:add' }) },
+                ),
+                h(
+                    NButton,
+                    {
+                        size: 'tiny',
+                        quaternary: true,
+                        type: 'info',
+                        onClick: () => {
+                            handleEdit(row)
+                        },
+                    },
+                    { default: () => '编辑', icon: () => h('i', { class: 'i-material-symbols:edit-outline' }) },
+                ),
+                h(
+                    NPopconfirm,
+                    {
+                        onPositiveClick: () => handleDelete(row.id, false),
+                    },
+                    {
+                        trigger: () =>
+                            h(
+                                NButton,
+                                { size: 'tiny', quaternary: true, type: 'error' },
+                                {
+                                    default: () => '删除',
+                                    icon: () => h('i', { class: 'i-material-symbols:delete-outline' }),
+                                },
+                            ),
+                        default: () => h('div', {}, '确定删除该菜单吗?'),
+                    },
+                ),
+            ]
+        },
+    },
+]
+
+/**
+ * 处理更新保活状态
+ * @param {Object} row - 当前操作的菜单项对象
+ * 在此函数中，会根据 `row` 对象的 `id` 来判断是否进行操作，
+ * 切换菜单项的 `keep_alive` 属性，并通过 API 更新服务器数据。
+ */
+ async function handleUpdateKeepAlive(row) {
+    // 如果 row.id 不存在，则不进行任何操作
+    if (!row.id) {
+        return
+    }
+    
+    // 修改正在发布的状态
+    row.publishing = true
+    // 切换保活状态（如果原本是 true，则变为 false；反之亦然）
+    row.keep_alive = !row.keep_alive
+    
+    try {
+        // 调用 API 保存或更新菜单项的状态
+        await api.saveOrUpdateMenu(row)
+        // 根据保活状态展示不同的提示信息
+        $message?.success(row.keep_alive ? '已保活' : '已取消保活')
+    }
+    catch (err) {
+        // 如果发生错误，则回退保活状态（恢复到操作前的状态）
+        row.keep_alive = !row.keep_alive
+        console.error(err)  // 输出错误信息到控制台
+    }
+    finally {
+        // 操作完成后，重置 `publishing` 状态为 false
+        row.publishing = false
+    }
+}
+
+/**
+ * 处理更新隐藏状态
+ * @param {Object} row - 当前操作的菜单项对象
+ * 在此函数中，会根据 `row` 对象的 `id` 来判断是否进行操作，
+ * 切换菜单项的 `is_hidden` 属性，并通过 API 更新服务器数据。
+ */
+async function handleUpdateHidden(row) {
+    // 如果 row.id 不存在，则不进行任何操作
+    if (!row.id) {
+        return
+    }
+    
+    // 修改正在发布的状态
+    row.publishing = true
+    // 切换隐藏状态（如果原本是 true，则变为 false；反之亦然）
+    row.is_hidden = !row.is_hidden
+    
+    try {
+        // 调用 API 保存或更新菜单项的状态
+        await api.saveOrUpdateMenu(row)
+        // 根据隐藏状态展示不同的提示信息
+        $message?.success(row.is_hidden ? '已隐藏' : '已取消隐藏')
+    }
+    catch (err) {
+        // 如果发生错误，则回退隐藏状态（恢复到操作前的状态）
+        row.is_hidden = !row.is_hidden
+        console.error(err)  // 输出错误信息到控制台
+    }
+    finally {
+        // 操作完成后，重置 `publishing` 状态为 false
+        row.publishing = false
+    }
+}
+
+// 新增菜单(可选目录)
+function handleClickAdd() {
+    initForm.is_catalogue = true // 默认选中"目录"
+    initForm.component = 'Layout' // 目录必须是 "Layout", 一级菜单可以是 "Layout"
+    initForm.parent_id = 0 // 目录和一级菜单的父id是 0
+    handleAdd()
+}
+</script>
+
+<style lang="scss" scoped></style>
+```
+
+
+
+### 9.5.2 resource/index.vue 
+
+<img src="./assets/image-20250210160923585.png" alt="image-20250210160923585" style="zoom:80%;" />
+
+![image-20250210161003005](./assets/image-20250210161003005.png)
+
+该组件主要实现了接口资源的管理功能，支持增、删、改、查操作，并且提供了接口和模块的增删改功能。它使用了 `Naive UI` 组件库来构建用户界面，并通过 `useCRUD` 组合函数来封装常用的增删改查操作逻辑。通过这种方式，代码的可重用性和可维护性得到了提高。
+
+1. **模板部分 (`<template>`)**
+
+**CommonPage 组件**
+
+- `CommonPage` 是页面的主要容器，接受一个 `title` 属性作为页面的标题。
+- 页面操作部分被放入了 `#action` 插槽，使用了一个 `NButton` 按钮，点击时调用 `handleAddModule` 方法来新增一个模块。
+
+**CrudTable 组件**
+
+- `CrudTable` 用来展示接口资源列表，它包含了很多配置项：
+
+  - `v-model:query-items="queryItems"`：用于双向绑定查询条件（如资源名 `keyword`）。
+  - `:is-pagination="false"`：禁用分页功能。
+  - `:columns="columns"`：表格的列配置。
+  - `:get-data="api.getResources"`：指定获取数据的 API 请求函数。
+  - `:single-line="true"`：使每一行数据单独显示。
+
+  里面的 `#queryBar` 插槽用于表格上方的查询条件部分，包含了一个输入框，用于按资源名查询。
+
+**CrudModal 组件**
+
+- 有两个模态框 CrudModal，分别用于：
+
+  - **新增或编辑接口资源**，包含资源名、资源路径和请求方式字段。
+  - **新增或编辑模块**，只有模块名字段。
+
+  每个模态框中包含 NForm 表单，用于展示和编辑数据。
+
+**按钮和操作**
+
+- 每一行数据的操作列包含：
+  - **新增**按钮（`新增模块`）：如果当前行有子资源，允许创建子模块。
+  - **编辑**按钮：允许编辑资源或模块。
+  - **删除**按钮：允许删除资源，并且会弹出一个确认框。
+
+2. **脚本部分 (`<script setup>`)**
+
+**引入模块和组件**
+
+- 导入了 `Vue` 中的一些 API 和 `Naive UI` 组件，如 `NButton`、`NForm`、`NSwitch`、`NTag` 等。
+- 导入了自定义的组件，如 `CommonPage`、`QueryItem`、`CrudTable`、`CrudModal` 等。
+- 还导入了 `useCRUD` 这个自定义组合逻辑，用于简化表单的增删改查操作。
+- `api` 是与后台进行交互的 API 文件，封装了接口请求。
+
+**表单数据和状态管理**
+
+- 使用 ref 和 useCRUD 来管理模态框和表单的数据状态。
+  - **`modalVisible`**：控制模态框的显示与隐藏。
+  - **`modalAction`**：表示当前操作类型（新增或编辑）。
+  - **`modalTitle`**：模态框的标题。
+  - **`modalLoading`**：模态框的加载状态（如请求中）。
+  - **`modalForm`**：模态框中的表单数据。
+  - **`modalFormRef`**：模态框表单的引用，用于执行表单操作，如验证等。
+
+**表格列配置 (`columns`)**
+
+- **资源名称**、**资源路径**、**请求方式**、**匿名访问**、**创建日期** 等字段在表格中展示。
+- 使用 h() 函数渲染自定义内容，比如：
+  - `render(row)` 方法用来定制如何渲染某一列的数据。
+  - **请求方式**列通过 `NTag` 渲染不同类型的标签（如 GET、POST、DELETE、PUT）。
+  - **匿名访问**列使用了 `NSwitch` 组件来表示是否允许匿名访问。
+  - **操作**列包含了 `编辑`、`删除` 等操作按钮，并且删除操作会弹出确认框。
+
+**请求方法类型 (`tagType`)**
+
+- tagType(type) 方法根据请求方法返回不同的标签类型：
+  - `GET` 显示为 `info` 类型。
+  - `POST` 显示为 `success` 类型。
+  - `PUT` 显示为 `warning` 类型。
+  - `DELETE` 显示为 `error` 类型。
+
+**匿名访问的切换 (`handleUpdateAnonymous`)**
+
+- 当切换匿名访问时，调用 `api.updateResourceAnonymous(row)` 更新接口资源的匿名访问状态。
+- 使用 `publishing` 状态来显示加载动画，避免在请求过程中用户重复点击。
+
+**模块相关操作**
+
+- **`handleAddModule`** 和 **`handleEditModule`** 分别用来打开新增或编辑模块的模态框。
+- **`handleModuleSave`** 用来保存模块的修改。
+
+```vue
+<template>
+    <CommonPage title="接口管理">
+        <template #action>
+            <NButton type="primary" @click="handleAddModule">
+                <template #icon>
+                    <span class="i-material-symbols:add" />
+                </template>
+                新增模块
+            </NButton>
+        </template>
+
+        <CrudTable ref="$table" v-model:query-items="queryItems" :is-pagination="false" :columns="columns"
+            :get-data="api.getResources" :single-line="true">
+            <template #queryBar>
+                <QueryItem label="资源名" :label-width="50">
+                    <NInput v-model:value="queryItems.keyword" clearable type="text" placeholder="请输入资源名"
+                        @keydown.enter="$table?.handleSearch()" />
+                </QueryItem>
+            </template>
+        </CrudTable>
+
+        <CrudModal v-model:visible="modalVisible" :title="modalTitle" :loading="modalLoading" @save="handleSave">
+            <NForm ref="modalFormRef" label-placement="left" label-align="left" :label-width="80" :model="modalForm">
+                <NFormItem label="资源名" path="name">
+                    <NInput v-model:value="modalForm.name" placeholder="请输入资源名" />
+                </NFormItem>
+                <NFormItem label="资源路径" path="url">
+                    <NInput v-model:value="modalForm.url" placeholder="请输入资源路径" />
+                </NFormItem>
+                <NFormItem label="请求方式" path="request_method">
+                    <NRadioGroup v-model:value="modalForm.request_method" name="radiogroup">
+                        <NSpace>
+                            <NRadio v-for="method of requestMethods" :key="method" :value="method">
+                                <NGradientText :type="tagType(method)">
+                                    {{ method }}
+                                </NGradientText>
+                            </NRadio>
+                        </NSpace>
+                    </NRadioGroup>
+                </NFormItem>
+            </NForm>
+        </CrudModal>
+
+        <CrudModal v-model:visible="moduleModalVisible" :title="`${modalAction === 'add' ? '新增' : '编辑'}模块`"
+            :loading="modalVisible" @save="handleModuleSave">
+            <NForm ref="modalFormRef" label-placement="left" label-align="left" :label-width="80" :model="modalForm">
+                <NFormItem label="模块名" path="name">
+                    <NInput v-model:value="modalForm.name" placeholder="请输入模块名" />
+                </NFormItem>
+            </NForm>
+        </CrudModal>
+    </CommonPage>
+</template>
+
+
+<script setup>
+import { h, onMounted, ref } from 'vue'
+import { NButton, NForm, NFormItem, NGradientText, NInput, NPopconfirm, NRadio, NRadioGroup, NSpace, NSwitch, NTag } from 'naive-ui'
+
+import CommonPage from '@/components/common/CommonPage.vue'
+import QueryItem from '@/components/crud/QueryItem.vue'
+import CrudModal from '@/components/crud/CrudModal.vue'
+import CrudTable from '@/components/crud/CrudTable.vue'
+
+import { formatDate } from '@/utils'
+import { useCRUD } from '@/composables'
+import api from '@/api'
+
+defineOptions({ name: '接口管理' }) // 设置页面名称
+
+// 定义引用，用于操作表格
+const $table = ref(null)
+// 定义查询条件
+const queryItems = ref({
+    keyword: '',
+})
+
+// 使用 CRUD 封装逻辑
+const {
+    modalVisible,  // 控制模态框显示与隐藏
+    modalAction,   // 当前操作，新增、编辑
+    modalTitle,    // 模态框标题
+    modalLoading,  // 模态框加载状态
+    handleAdd,     // 处理新增操作
+    handleDelete,  // 处理删除操作
+    handleEdit,    // 处理编辑操作
+    handleSave,    // 处理保存操作
+    modalForm,     // 模态框表单数据
+    modalFormRef,  // 模态框表单引用
+} = useCRUD({
+    name: '接口',  // 资源名称
+    doCreate: api.saveOrUpdateResource,  // 创建接口资源
+    doDelete: api.deleteResource,       // 删除接口资源
+    doUpdate: api.saveOrUpdateResource, // 更新接口资源
+    refresh: () => $table.value?.handleSearch(), // 刷新表格数据
+})
+
+// 页面挂载时进行查询
+onMounted(() => {
+    $table.value?.handleSearch() // 初始加载接口数据
+})
+
+// 请求方法类型，用于后续的标签渲染
+const requestMethods = ['GET', 'POST', 'DELETE', 'PUT']
+
+// 根据请求方法返回不同的标签类型
+function tagType(type) {
+    switch (type) {
+        case 'GET':
+            return 'info'  // 信息标签
+        case 'POST':
+            return 'success' // 成功标签
+        case 'PUT':
+            return 'warning' // 警告标签
+        case 'DELETE':
+            return 'error' // 错误标签
+        default:
+            return 'info'
+    }
+}
+
+// 表格列定义
+const columns = [
+    {
+        title: '资源名称',  // 列标题
+        key: 'name',       // 数据字段
+        width: 80,         // 列宽度
+        ellipsis: { tooltip: true },  // 超出文本显示为省略号并提供工具提示
+    },
+    {
+        title: '资源路径',
+        key: 'url',
+        width: 80,
+        ellipsis: { tooltip: true },
+        render(row) {
+            return row.children ? '-' : h('span', { class: 'color-[#1890ff]' }, row.url)  // 渲染资源路径
+        },
+    },
+    {
+        title: '请求方式',
+        key: 'request_method',
+        width: 50,
+        align: 'center',
+        render(row) {
+            return row.children
+                ? '-'
+                : h(
+                    NTag,
+                    { type: tagType(row.request_method) }, // 使用计算属性渲染标签
+                    { default: () => row.request_method },
+                )
+        },
+    },
+    {
+        title: '匿名访问',
+        key: 'is_hidden',
+        width: 50,
+        align: 'center',
+        fixed: 'left',
+        render(row) {
+            return row.children
+                ? '-'
+                : h(NSwitch, {
+                    size: 'small',  // 设置开关大小
+                    rubberBand: false,  // 禁用橡皮筋效果
+                    value: row.is_anonymous,  // 当前匿名访问状态
+                    loading: !!row.publishing, // 显示加载状态
+                    onUpdateValue: () => handleUpdateAnonymous(row),  // 处理切换匿名访问
+                })
+        },
+    },
+    {
+        title: '创建日期',
+        key: 'created_at',
+        width: 60,
+        render(row) {
+            return h('span', formatDate(row.created_at))  // 格式化日期并显示
+        },
+    },
+    {
+        title: '操作',
+        key: 'actions',
+        width: 115,
+        align: 'center',
+        fixed: 'right',
+        render(row) {
+            return [
+                // 新增按钮
+                h(
+                    NButton,
+                    {
+                        size: 'tiny',
+                        quaternary: true,
+                        type: 'primary',
+                        style: `display: ${row.children ? '' : 'none'};`, // 根据是否有子资源决定显示
+                        onClick: () => {
+                            handleAdd()  // 打开新增模态框
+                            modalForm.value.parent_id = row.id  // 设置父资源id
+                        },
+                    },
+                    { default: () => '新增', icon: () => h('i', { class: 'i-material-symbols:add' }) },
+                ),
+                // 编辑按钮
+                h(
+                    NButton,
+                    {
+                        size: 'tiny',
+                        quaternary: true,
+                        type: 'info',
+                        onClick: () => (row.children ? handleEditModule(row) : handleEdit(row)),  // 判断是编辑模块还是资源
+                    },
+                    { default: () => '编辑', icon: () => h('i', { class: 'i-material-symbols:edit-outline' }) },
+                ),
+                // 删除按钮
+                h(
+                    NPopconfirm,
+                    {
+                        onPositiveClick: () => {
+                            handleDelete(row.id, false)  // 删除操作
+                        },
+                    },
+                    {
+                        trigger: () =>
+                            h(
+                                NButton,
+                                { size: 'tiny', quaternary: true, type: 'error' },
+                                { default: () => '删除', icon: () => h('i', { class: 'i-material-symbols:delete-outline' }) },
+                            ),
+                        default: () => h('div', {}, '确定删除该接口吗?'),  // 弹出确认框提示
+                    },
+                ),
+            ]
+        },
+    },
+]
+
+// 修改匿名访问状态
+async function handleUpdateAnonymous(row) {
+    if (!row.id) {
+        return  // 确保有id
+    }
+    row.publishing = true  // 启动加载动画
+    row.is_anonymous = !row.is_anonymous  // 切换匿名访问状态
+    try {
+        await api.updateResourceAnonymous(row)  // 调用 API 更新
+        $message?.success(row.is_anonymous ? '已允许匿名访问' : '已禁止匿名访问')  // 成功提示
+    }
+    catch (err) {
+        row.is_anonymous = !row.is_anonymous  // 回滚操作
+        console.error(err)
+    }
+    finally {
+        row.publishing = false  // 结束加载动画
+    }
+}
+
+// 模块相关
+const moduleModalVisible = ref(false)  // 控制模块模态框的显示
+// 打开新增模块的模态框
+function handleAddModule() {
+    modalAction.value = 'add'  // 设置操作类型为新增
+    modalForm.value = {}  // 清空表单数据
+    moduleModalVisible.value = true  // 显示模态框
+}
+// 编辑模块
+function handleEditModule(row) {
+    modalAction.value = 'edit'  // 设置操作类型为编辑
+    modalForm.value = { ...row }  // 复制数据到表单
+    moduleModalVisible.value = true  // 显示模态框
+}
+// 保存模块数据
+async function handleModuleSave() {
+    handleSave()  // 保存操作
+    moduleModalVisible.value = false  // 关闭模态框
+}
+</script>
+
+
+<style lang="scss" scoped></style>
+```
+
+
+
+### 9.5.3 role/index.vue
+
+![image-20250210170451498](./assets/image-20250210170451498.png)
+
+![image-20250210170516893](./assets/image-20250210170516893.png)
+
+这段代码是一个基于 Vue 3 和 Naive UI 的角色管理页面，提供了角色的增删改查功能。下面是对其代码的详细分析：
+
+1. **组件结构**
+
+- **CommonPage**：是一个包装组件，包含页面的标题和操作按钮，类似于页面的布局框架。
+- **CrudTable**：用于显示角色列表并提供查询功能。通过 `v-model:query-items` 绑定查询条件，通过 `columns` 属性配置表格的列，通过 `get-data` 属性指定数据获取方法。
+- **CrudModal**：用于显示角色的创建或编辑模态框。
+- **NButton、NInput、NTag、NSwitch、NTree** 等 Naive UI 组件用于构建表单、表格、按钮等 UI 元素。
+
+2. **数据管理**
+
+- `queryItems`: 用于保存查询条件（如角色名），会绑定到查询栏组件。
+- `modalForm`: 用于保存模态框中角色的数据。
+- `showMenu`: 这是一个控制是否展示“菜单权限”还是“资源权限”的标志。`true` 显示菜单权限，`false` 显示资源权限。
+- `menuOption` 和 `resourceOption`: 存储菜单权限和资源权限的选项数据。
+- `columns`: 定义了表格的列，包括角色的显示内容和操作按钮。
+
+3. **功能**
+
+- **查询功能**：通过 `QueryItem` 和 `NInput` 实现角色名称的搜索，按回车触发 `$table?.handleSearch()` 来执行查询。
+- 增、删、改功能：通过 handleAdd、handleEdit和 handleDelete 来进行角色的添加、编辑和删除。
+  - 在新增或编辑时，`modalVisible` 控制模态框的显示，`modalTitle` 和 `modalForm` 分别控制标题和表单内容。
+- **批量删除**：`handleDelete($table?.selections)` 允许通过选中表格中的多行进行批量删除。
+- 菜单权限和资源权限切换：
+  - 在编辑角色时，用户可以选择“菜单权限”或“资源权限”。
+  - 通过 `showMenu` 来控制是显示 `menuOption`（菜单权限）还是 `resourceOption`（资源权限），并动态加载这两个选项。
+  - 菜单权限和资源权限通过 `NTree` 组件进行显示，允许多选。
+
+4. **操作列**
+
+- 菜单权限 和 资源权限 的按钮可以编辑角色的不同权限类型。
+  - 点击菜单权限按钮时，`showMenu.value = true` 会加载菜单权限选项，点击资源权限按钮时，`showMenu.value = false` 会加载资源权限选项。
+- 每个角色的操作列有三个按钮：
+  - **菜单权限**：点击后加载菜单权限选项。
+  - **资源权限**：点击后加载资源权限选项。
+  - **删除**：弹出确认框，确认后删除角色。
+
+5. **表单与字段**
+
+- 角色的表单包括了角色名、角色标签、菜单权限和资源权限字段。
+- 对于 **菜单权限** 和 **资源权限**，使用了 `NTree` 来展示树形结构的选项，允许用户进行多选。
+- `modalAction === 'edit'` 判断当前是编辑操作时，显示菜单权限或资源权限树。
+
+6. **API 调用**
+
+- **api.getMenuOption()** 和 **api.getResourceOption()** 用于从服务器获取菜单和资源权限的数据。
+- **api.saveOrUpdateRole()** 用于保存或更新角色数据。
+- **api.deleteRole()** 用于删除角色数据。
+
+```vue
+<template>
+    <CommonPage title="角色管理">
+        <template #action>
+            <NButton type="primary" @click="handleAdd">
+                <template #icon>
+                    <i class="i-material-symbols:add" />
+                </template>
+                新建角色
+            </NButton>
+            <NButton type="error" :disabled="!$table?.selections.length" @click="handleDelete($table?.selections)">
+                <template #icon>
+                    <i class="i-material-symbols:add" />
+                </template>
+                批量删除
+            </NButton>
+        </template>
+
+        <CrudTable ref="$table" v-model:query-items="queryItems" :columns="columns" :get-data="api.getRoles">
+            <template #queryBar>
+                <QueryItem label="角色名" :label-width="50">
+                    <NInput v-model:value="queryItems.keyword" clearable type="text" placeholder="请输入角色名"
+                        @keydown.enter=" $table?.handleSearch()" />
+                </QueryItem>
+            </template>
+        </CrudTable>
+
+        <CrudModal v-model:visible="modalVisible" :title="modalTitle" :loading="modalLoading" @save="handleSave">
+            <NForm ref="modalFormRef" label-placement="left" label-align="left" :label-width="80" :model="modalForm"
+                :disabled="modalAction === 'view'">
+                <NFormItem label="角色名" path="name">
+                    <NInput v-model:value="modalForm.name" placeholder="请输入角色名称" />
+                </NFormItem>
+                <NFormItem label="角色标签" path="name">
+                    <NInput v-model:value="modalForm.label" placeholder="请输入角色标签" />
+                </NFormItem>
+                <!-- TODO: 新增时可以选择菜单和资源权限 -->
+                <template v-if="modalAction === 'edit'">
+                    <NFormItem v-if="showMenu" label="菜单权限" path="menu_ids">
+                        <NTree :data="menuOption" :checked-keys="modalForm.menu_ids" checkable expand-on-click
+                            block-line @update:checked-keys="(v) => (modalForm.menu_ids = v)" />
+                    </NFormItem>
+                    <NFormItem v-else label="资源权限" path="resource_ids">
+                        <NTree :data="resourceOption" :checked-keys="modalForm.resource_ids" block-line checkable
+                            expand-on-click cascade accordion
+                            @update:checked-keys="(v) => (modalForm.resource_ids = v)" />
+                    </NFormItem>
+                </template>
+            </NForm>
+        </CrudModal>
+    </CommonPage>
+</template>
+
+
+<script setup>
+import { h, onMounted, ref } from 'vue'
+import { NButton, NForm, NFormItem, NInput, NPopconfirm, NSwitch, NTag, NTree } from 'naive-ui'
+
+import CommonPage from '@/components/common/CommonPage.vue'
+import QueryItem from '@/components/crud/QueryItem.vue'
+import CrudModal from '@/components/crud/CrudModal.vue'
+import CrudTable from '@/components/crud/CrudTable.vue'
+
+import { formatDate } from '@/utils'
+import { useCRUD } from '@/composables'
+import api from '@/api'
+
+defineOptions({ name: '角色管理' })
+
+const $table = ref(null)
+const queryItems = ref({
+    keyword: '',
+})
+
+const {
+    modalVisible,
+    modalAction,
+    modalTitle,
+    modalLoading,
+    handleAdd,
+    handleDelete,
+    handleEdit,
+    handleSave,
+    modalForm,
+    modalFormRef,
+} = useCRUD({
+    name: '角色',
+    initForm: {},
+    doCreate: api.saveOrUpdateRole,
+    doDelete: api.deleteRole,
+    doUpdate: api.saveOrUpdateRole,
+    refresh: () => $table.value?.handleSearch(),
+})
+
+// 菜单, 资源 跳出菜单的选项不同
+const showMenu = ref(true)
+const resourceOption = ref([]) // 资源选项
+const menuOption = ref([]) // 菜单选项
+
+onMounted(() => {
+    $table.value?.handleSearch()
+    // api.getResourceOption().then(res => (resourceOption.value = res.data))
+    // api.getMenuOption().then(res => (menuOption.value = res.data))
+})
+
+const columns = [
+    {
+        type: 'selection',
+        width: 15,
+        fixed: 'left',
+    },
+    {
+        title: '角色名',
+        key: 'name',
+        width: 80,
+        align: 'center',
+        ellipsis: { tooltip: true },
+    },
+    {
+        title: '角色标签',
+        key: 'label',
+        width: 80,
+        align: 'center',
+        render(row) {
+            return h(NTag, { type: 'info' }, { default: () => row.label })
+        },
+    },
+    {
+        title: '创建日期',
+        key: 'created_at',
+        width: 60,
+        align: 'center',
+        render(row) {
+            return h('span', formatDate(row.created_at))
+        },
+    },
+    {
+        title: '是否禁用',
+        key: 'is_disable',
+        width: 30,
+        align: 'center',
+        fixed: 'left',
+        render(row) {
+            return h(NSwitch, {
+                size: 'small',
+                rubberBand: false,
+                value: row.is_disable,
+                loading: !!row.publishing, // 修改 ing 动画
+                checkedValue: 1,
+                uncheckedValue: 0,
+                onUpdateValue: () => $message.info('这个功能暂时还不支持~'),
+            })
+        },
+    },
+    {
+        title: '操作',
+        key: 'actions',
+        width: 100,
+        align: 'center',
+        fixed: 'right',
+        render(row) {
+            return [
+                h(
+                    NButton,
+                    {
+                        size: 'tiny',
+                        quaternary: true,
+                        type: 'info',
+                        onClick: async () => {
+                            showMenu.value = true
+                            await api.getMenuOption().then(resp => (menuOption.value = resp.data))
+                            handleEdit(row)
+                        },
+                    },
+                    {
+                        default: () => '菜单权限',
+                        icon: () => h('i', { class: 'i-material-symbols:edit-outline' }),
+                    },
+                ),
+                h(
+                    NButton,
+                    {
+                        size: 'tiny',
+                        quaternary: true,
+                        type: 'info',
+                        onClick: async () => {
+                            showMenu.value = false
+                            await api.getResourceOption().then(resp => (resourceOption.value = resp.data))
+                            handleEdit(row)
+                        },
+                    },
+                    {
+                        default: () => '资源权限',
+                        icon: () => h('i', { class: 'i-ic:baseline-folder-open' }),
+                    },
+                ),
+                h(
+                    NPopconfirm,
+                    {
+                        onPositiveClick: () => handleDelete([row.id], false),
+                        onNegativeClick: () => { },
+                    },
+                    {
+                        trigger: () =>
+                            h(
+                                NButton,
+                                {
+                                    size: 'small',
+                                    type: 'error',
+                                    style: 'margin-left: 15px;',
+                                },
+                                {
+                                    default: () => '删除',
+                                    icon: () => h('i', { class: 'i-material-symbols:delete-outline' }),
+                                },
+                            ),
+                        default: () => h('div', {}, '确定删除该角色吗?'),
+                    },
+                ),
+            ]
+        },
+    },
+]
+</script>
+
+<style lang="scss" scoped></style>
+```
+
+
+
+### 9.5.4 route.js
+
+
+
+```javascript
+
+```
 
