@@ -820,7 +820,208 @@ export default {
 
 ## 11.2 test
 
-index.vue
+
+
+这个组件展示了一个可编辑的表格，用户可以根据分类名进行查询，并通过点击进入编辑模式修改表格中的数据。
+
+使用了`ShowOrEdit`组件渲染可编辑的单元格，表格列的数据通过动态渲染方式（`render`函数）展示。
+
+**这段代码实现了一个Vue 3组件，包含了一个分页查询功能的表格，允许用户编辑表格中的数据。下面是代码的详细分析：**
+
+1. **外部组件布局**
+
+- `CommonPage`是页面的外框，设置页面的标题为"测试页面"。
+- `CrudTable`是表格组件，负责显示和处理表格数据。它通过`v-model:query-items="queryItems"`实现双向绑定，`columns`传递表格列定义，`get-data="api.getCategorys"`表示通过`api.getCategorys`方法获取数据。
+- 查询条（`queryBar`）包含一个输入框，用于根据"分类名"进行搜索，按下回车时触发表格的搜索方法。
+
+2. **组件内部状态和生命周期**
+
+- `$table`存储`CrudTable`组件的引用，可以通过它调用表格相关的方法。
+- `queryItems`用于存储查询条件，初始时只有一个`keyword`属性，用于存储分类名的查询值。
+- `editIndex`用于记录当前正在编辑的行的索引，初始值为`-1`表示没有行在编辑中。
+- 在`onMounted`生命周期钩子中，表格会在页面加载时触发一次搜索。
+
+3. **ShowOrEdit 组件**
+
+- `ShowOrEdit`是一个可编辑单元格的组件，允许点击进入编辑模式，渲染一个`NInput`输入框。
+- 如果单元格处于编辑模式（`editIndex.value === props.rowIndex`），渲染一个`NInput`组件，允许修改值。否则，渲染该单元格的原始值。
+- `handleOnClick`方法用于触发编辑，点击时将`editIndex`设置为当前行索引。
+- `handleChange`用于在输入框内容变化时更新父组件的数据。
+
+4. **表格列的定义**
+
+- columns数组定义了表格的列，其中包含：
+  - 选择框列（`type: 'selection'`），用于选择行。
+  - 创建日期和更新日期列，这两列会通过`ShowOrEdit`组件渲染，允许编辑。
+  - 操作列，显示“进入编辑”或“关闭编辑”按钮，控制当前行是否处于编辑状态。
+
+**src/views/test/index.vue**
+
+```vue
+<template>
+    <CommonPage title="测试页面">
+        <CrudTable ref="$table" v-model:query-items="queryItems" :columns="columns" :get-data="api.getCategorys">
+            <template #queryBar>
+                <QueryItem label="分类名" :label-width="50">
+                    <NInput v-model:value="queryItems.keyword" clearable type="text" placeholder="请输入分类名"
+                        @keydown.enter="$table?.handleSearch()" />
+                </QueryItem>
+            </template>
+        </CrudTable>
+    </CommonPage>
+</template>
+
+
+<script setup>
+import { defineComponent, h, nextTick, onMounted, ref } from 'vue'  // 导入 Vue 相关的 API
+import { NInput } from 'naive-ui'  // 导入 Naive UI 中的输入框组件
+
+// 导入其他自定义组件
+import CommonPage from '@/components/common/CommonPage.vue'
+import QueryItem from '@/components/crud/QueryItem.vue'
+import CrudTable from '@/components/crud/CrudTable.vue'
+
+import api from '@/api'  // 导入 API 模块，用于与后台进行交互
+
+// 设置当前组件的名称为 "分类管理"
+defineOptions({ name: '分类管理' })
+
+// 定义响应式数据
+const $table = ref(null)  // 用于引用表格组件，进行操作
+const queryItems = ref({  // 存储查询条件，当前只有一个关键字查询项
+    keyword: '',
+})
+
+// 当前编辑行的索引
+const editIndex = ref(-1)
+
+// 在组件挂载完成后，调用表格的搜索方法
+onMounted(() => {
+    $table.value?.handleSearch()  // 调用表格实例的 handleSearch 方法进行数据查询
+})
+
+// 定义一个组件，用于渲染可编辑的表格单元格
+const ShowOrEdit = defineComponent({
+    props: {  // 组件的输入属性
+        value: [String, Number],  // 单元格的初始值，可以是字符串或数字
+        onUpdateValue: [Function, Array],  // 更新单元格值时调用的回调函数
+        rowIndex: [Number],  // 当前单元格所在行的索引
+    },
+    setup(props) {  // 组件的逻辑部分
+        const inputRef = ref(null)  // 用于引用输入框实例
+        const inputValue = ref(props.value)  // 输入框的值，默认等于传入的 value 值
+
+        // 处理点击单元格事件，进入编辑模式
+        function handleOnClick() {
+            editIndex.value = props.rowIndex  // 设置当前编辑行的索引
+            nextTick(() => {
+                inputRef.value.focus()  // 等待 DOM 更新后聚焦到输入框
+            })
+        }
+
+        // 处理输入框值的变化
+        function handleChange() {
+            props.onUpdateValue(inputValue.value)  // 更新父组件传入的值
+        }
+
+        // 返回渲染的虚拟 DOM，条件渲染输入框或值文本
+        return () =>
+            h(  // 返回一个 div 元素
+                'div',
+                {
+                    style: 'min-height: 22px',  // 设置最小高度
+                    onClick: handleOnClick,  // 点击时进入编辑状态
+                },
+                editIndex.value === props.rowIndex  // 如果当前行是编辑状态
+                    ? h(NInput, {  // 渲染一个输入框
+                        ref: inputRef,  // 引用输入框
+                        value: inputValue.value,  // 绑定输入框的值
+                        onUpdateValue: (v) => {  // 处理输入框值变化
+                            inputValue.value = v
+                        },
+                        onChange: handleChange,  // 输入框值变化时更新父组件
+                        onBlur: handleChange,  // 输入框失去焦点时更新父组件
+                    })
+                    : props.value,  // 否则直接渲染单元格的原始值
+            )
+    },
+})
+
+// 表格的列定义
+const columns = [
+    { type: 'selection', width: 15, fixed: 'left' },  // 选择框列，宽度为 15，固定在左侧
+    {
+        title: '创建日期',  // 表头显示 "创建日期"
+        key: 'created_at',  // 字段对应的 key
+        width: 80,  // 列宽度
+        align: 'center',  // 列内容居中对齐
+        render(row, index) {  // 自定义渲染函数
+            return h(
+                ShowOrEdit,  // 使用 ShowOrEdit 组件进行渲染
+                {
+                    value: row.created_at,  // 将行数据中的 "创建日期" 传递给组件
+                    rowIndex: index,  // 当前行的索引
+                    onUpdateValue(v) {  // 组件更新时的回调函数
+                        data.value[index].created_at = v  // 更新当前行的 "创建日期" 字段
+                    },
+                },
+            )
+        },
+    },
+    {
+        title: '更新日期',  // 表头显示 "更新日期"
+        key: 'updated_at',  // 字段对应的 key
+        width: 80,  // 列宽度
+        align: 'center',  // 列内容居中对齐
+        render(row, index) {  // 自定义渲染函数
+            return h(
+                ShowOrEdit,  // 使用 ShowOrEdit 组件进行渲染
+                {
+                    value: row.updated_at,  // 将行数据中的 "更新日期" 传递给组件
+                    rowIndex: index,  // 当前行的索引
+                    onUpdateValue(v) {  // 组件更新时的回调函数
+                        data.value[index].updated_at = v  // 更新当前行的 "更新日期" 字段
+                    },
+                },
+            )
+        },
+    },
+    {
+        title: '操作',  // 表头显示 "操作"
+        key: 'action',  // 字段对应的 key
+        width: 80,  // 列宽度
+        align: 'center',  // 列内容居中对齐
+        render(row, index) {  // 自定义渲染函数
+            if (editIndex.value === index) {  // 如果当前行在编辑状态
+                return h(
+                    'button',  // 渲染一个按钮
+                    {
+                        onClick() {  // 点击按钮时关闭编辑
+                            editIndex.value = -1  // 关闭编辑状态
+                        },
+                    },
+                    '关闭编辑',  // 按钮文本
+                )
+            }
+            else {  // 如果当前行不在编辑状态
+                return h(
+                    'button',  // 渲染一个按钮
+                    {
+                        onClick() {  // 点击按钮时进入编辑状态
+                            editIndex.value = index  // 设置当前编辑行的索引
+                        },
+                    },
+                    '进入编辑',  // 按钮文本
+                )
+            }
+        },
+    },
+]
+</script>
+
+
+<style lang="scss" scoped></style>
+```
 
 
 
@@ -828,11 +1029,561 @@ index.vue
 
 ### 11.3.1 list/index.vue
 
+![image-20250210212747855](./assets/image-20250210212747855.png)
+
+<img src="./assets/image-20250210212838507.png" alt="image-20250210212838507" style="zoom:67%;" />
+
+**这段代码构建了一个功能全面的用户管理页面，具备查询、编辑、禁用等功能，数据通过 API 获取并展示在表格中，操作通过表单和模态框进行。通过自定义钩子封装了常用的 CRUD 操作，提高了代码的复用性和可维护性。**
+
+1. **模板结构 (`<template>`)**
+
+- **`CommonPage` 组件**：包裹了整个页面，提供了页面的结构和样式，标题为“用户列表”。
+- **`CrudTable` 组件**：这是一个通用的表格组件，用来展示用户列表。通过 `v-model:query-items` 将查询条件与表格绑定，并通过 `:get-data="api.getUsers"` 绑定获取数据的 API。
+- **`QueryItem` 组件**：用于构建搜索框，用来查询用户的昵称、用户名、登录方式等条件。每个查询框都通过 `v-model` 双向绑定查询项，并通过 `@keydown.enter` 监听回车键进行搜索。
+- **`CrudModal` 组件**：弹出的模态框，用于修改用户信息，包括用户昵称和角色。模态框内有一个表单，表单包含用户昵称和角色的输入项，角色项通过多选框 (`NCheckboxGroup`) 展示。
+
+2. **脚本逻辑 (`<script setup>`)**
+
+- **导入依赖**：
+  - 导入了 `vue` 中的常用功能和 Naive UI 组件，例如 `NButton`, `NCheckbox`, `NInput`, `NSelect` 等。
+  - 引入了 `CommonPage`, `QueryItem`, `CrudModal`, `CrudTable` 等自定义组件，以及工具函数、API 请求模块和 CRUD 逻辑钩子。
+- **`defineOptions`**：定义当前组件的名称为 `用户列表`。
+- **`queryItems`**：存储查询条件，包括 `username`, `nickname`, `login_type`，用于表格搜索。
+- **`useCRUD`**：使用自定义的 CRUD 钩子（`useCRUD`），这个钩子封装了添加、编辑、保存等操作的逻辑。
+  - `modalVisible`: 模态框是否可见。
+  - `modalLoading`: 模态框是否加载中。
+  - `handleSave`: 保存表单数据的方法。
+  - `handleEdit`: 编辑表单数据的方法。
+  - `modalForm`: 表单的数据模型，绑定在 `CrudModal` 上。
+  - `modalFormRef`: 表单引用，用于操作表单元素。
+- **角色选项 (`roleOptions`)**：存储角色选项，通过 `api.getRoleOption()` 获取角色数据。
+- **`onMounted`**：组件挂载时，调用 `api.getRoleOption()` 获取角色数据并触发表格搜索。
+- **`columns`**：定义了表格的列，包括头像、昵称、登录方式、角色、IP 地址等。每一列使用了 `render` 函数自定义渲染。
+  - 例如，头像列使用 `NImage` 显示用户头像，登录方式列使用 `NTag` 显示登录类型，用户角色列显示用户角色的标签，登录时间和创建时间列使用 `NButton` 显示格式化后的时间。
+- **`handleUpdateDisable`**：更新用户的禁用状态。
+  - 在禁用状态切换时，调用 `api.updateUserDisable` 更新用户的状态。
+  - 如果成功更新，则刷新表格数据并显示成功消息。如果失败，则恢复原来的状态并打印错误。
+
+3. **主要功能**
+
+- **查询功能**：用户可以通过昵称、用户名和登录方式进行搜索，并通过回车键触发搜索。查询条件通过 `queryItems` 对象管理，并且与表格的 `CrudTable` 组件绑定。
+- **表格展示**：表格展示了用户的头像、昵称、登录方式、角色、登录IP、创建时间等信息。每一列的渲染逻辑都通过 `render` 函数自定义，可以根据需要格式化或使用组件展示数据。
+- **编辑用户信息**：点击“编辑”按钮后，会弹出一个模态框，用户可以修改昵称和角色信息。通过 `handleEdit` 方法将选中的用户信息填充到表单中。
+- **禁用/启用用户**：每个用户有一个禁用开关，通过 `NSwitch` 组件实现。当用户点击开关时，调用 `handleUpdateDisable` 方法切换用户的禁用状态。
+
+```vue
+<template>
+    <CommonPage title="用户列表">
+        <CrudTable ref="$table" v-model:query-items="queryItems" :columns="columns" :get-data="api.getUsers">
+            <template #queryBar>
+                <QueryItem label="昵称" :label-width="40" :content-width="160">
+                    <NInput v-model:value="queryItems.nickname" clearable type="text" placeholder="请输入昵称"
+                        @keydown.enter="$table?.handleSearch()" />
+                </QueryItem>
+                <QueryItem label="用户名" :label-width="60" :content-width="160">
+                    <NInput v-model:value="queryItems.username" clearable type="text" placeholder="请输入用户名"
+                        @keydown.enter="$table?.handleSearch()" />
+                </QueryItem>
+                <QueryItem label="登录方式" :label-width="70" :content-width="160">
+                    <NSelect v-model:value="queryItems.login_type" clearable filterable placeholder="请选择登录方式"
+                        :options="loginTypeOptions" @update:value="$table?.handleSearch()" />
+                </QueryItem>
+            </template>
+        </CrudTable>
+
+        <CrudModal v-model:visible="modalVisible" title="修改用户" :loading="modalLoading" @save="handleSave">
+            <NForm ref="modalFormRef" label-placement="left" label-align="left" :label-width="80" :model="modalForm">
+                <NFormItem label="用户昵称" path="name">
+                    <NInput v-model:value="modalForm.nickname" clearable placeholder="请输入用户昵称" />
+                </NFormItem>
+                <NFormItem label="角色" path="role_ids">
+                    <NCheckboxGroup v-model:value="modalForm.role_ids">
+                        <NSpace item-style="display: flex;">
+                            <NCheckbox v-for="item in roleOptions" :key="item.value" :value="item.value"
+                                :label="item.label" />
+                        </NSpace>
+                    </NCheckboxGroup>
+                </NFormItem>
+            </NForm>
+        </CrudModal>
+    </CommonPage>
+</template>
+
+
+<script setup>
+// 导入 Vue 和 Naive UI 相关组件
+import { h, onMounted, ref } from 'vue'
+import { NButton, NCheckbox, NCheckboxGroup, NForm, NFormItem, NImage, NInput, NSelect, NSpace, NSwitch, NTag } from 'naive-ui'
+
+// 导入自定义组件和工具函数
+import CommonPage from '@/components/common/CommonPage.vue'
+import QueryItem from '@/components/crud/QueryItem.vue'
+import CrudModal from '@/components/crud/CrudModal.vue'
+import CrudTable from '@/components/crud/CrudTable.vue'
+
+import { loginTypeMap, loginTypeOptions } from '@/assets/config'  // 登录方式相关配置
+import { convertImgUrl, formatDate } from '@/utils'  // 图片路径转换和日期格式化工具函数
+import { useCRUD } from '@/composables'  // 自定义的CRUD逻辑钩子
+import api from '@/api'  // API 请求模块
+
+// 设置当前组件名称为 "用户列表"
+defineOptions({ name: '用户列表' })
+
+// 表格引用和查询条件
+const $table = ref(null)  // 存储 CrudTable 组件的引用
+const queryItems = ref({
+    username: '',  // 用户名查询
+    nickname: '',  // 昵称查询
+    login_type: null,  // 登录方式查询
+})
+
+// 使用 CRUD 操作的自定义钩子，包含添加、编辑、保存等逻辑
+const {
+    modalVisible,  // 模态框的显示状态
+    modalLoading,  // 模态框加载状态
+    handleSave,  // 保存数据的方法
+    handleEdit,  // 编辑数据的方法
+    modalForm,  // 模态框表单数据
+    modalFormRef,  // 模态框表单引用
+} = useCRUD({
+    name: '用户',  // 当前操作的数据模型名称
+    doUpdate: api.updateUser,  // 更新用户的 API 请求
+    refresh: () => $table.value?.handleSearch(),  // 更新成功后刷新表格
+})
+
+// 存储角色选项
+const roleOptions = ref([])
+
+// 在组件挂载时，加载角色选项并触发表格搜索
+onMounted(() => {
+    api.getRoleOption().then(resp => roleOptions.value = resp.data)  // 获取角色选项
+    $table.value?.handleSearch()  // 触发表格的初始搜索
+})
+
+// 定义表格列
+const columns = [
+    {
+        title: '头像',  // 表格列标题
+        key: 'avatar',  // 列的 key
+        width: 30,  // 列宽度
+        align: 'center',  // 内容居中对齐
+        render(row) {  // 自定义渲染函数
+            return h(NImage, {  // 渲染头像图片
+                'height': 30,
+                'imgProps': { style: { 'border-radius': '3px' } },  // 设置圆角
+                'src': convertImgUrl(row.info?.avatar),  // 获取图片 URL
+                'fallback-src': 'http://dummyimage.com/400x400',  // 加载失败的占位图
+                'show-toolbar-tooltip': true,  // 显示工具提示
+            })
+        },
+    },
+    {
+        title: '昵称',
+        key: 'nickname',
+        width: 60,
+        align: 'center',
+        ellipsis: { tooltip: true },  // 启用溢出文本显示工具提示
+        render(row) {
+            return h('span', row.info?.nickname)  // 渲染昵称
+        },
+    },
+    {
+        title: '登录方式',
+        key: 'login_type',
+        width: 40,
+        align: 'center',
+        render(row) {
+            return h(
+                NTag,
+                { type: loginTypeMap[row.login_type]?.tag },  // 显示不同类型的登录方式
+                { default: () => loginTypeMap[row.login_type]?.name || '未知' },  // 显示登录方式名称
+            )
+        },
+    },
+    {
+        title: '用户角色',
+        key: 'role',
+        width: 80,
+        align: 'center',
+        render(row) {
+            // 如果是超级管理员，则显示特殊标签
+            if (row.is_super) {
+                return h(NTag, { type: 'error' }, { default: () => '超级管理员' })
+            }
+            // 渲染用户的多个角色
+            const roles = row.roles ?? []
+            const groups = []
+            for (let i = 0; i < roles.length; i++) {
+                groups.push(h(NTag, { type: 'info', style: { margin: '2px 3px' } }, { default: () => roles[i].name }))
+            }
+            return h('span', groups.length ? groups : '无')  // 如果没有角色，显示 "无"
+        },
+    },
+    {
+        title: '登录 IP',
+        key: 'ip_address',
+        width: 70,
+        align: 'center',
+        ellipsis: { tooltip: true },
+        render(row) {
+            return h('span', row.ip_address || '未知')  // 显示登录 IP 地址
+        },
+    },
+    {
+        title: '登录地址',
+        key: 'ip_source',
+        width: 70,
+        align: 'center',
+        ellipsis: { tooltip: true },
+        render(row) {
+            return h('span', row.ip_source || '未知')  // 显示登录地址
+        },
+    },
+    {
+        title: '创建时间',
+        key: 'created_at',
+        align: 'center',
+        width: 70,
+        render(row) {
+            return h(
+                NButton,
+                { size: 'small', type: 'text', ghost: true },
+                {
+                    default: () => formatDate(row.created_at),  // 格式化创建时间
+                    icon: () => h('i', { class: 'i-mdi:update' }),  // 显示图标
+                },
+            )
+        },
+    },
+    {
+        title: '上次登录时间',
+        key: 'last_login_time',
+        align: 'center',
+        width: 70,
+        render(row) {
+            return h(
+                NButton,
+                { size: 'small', type: 'text', ghost: true },
+                {
+                    default: () => formatDate(row.last_login_time),  // 格式化上次登录时间
+                    icon: () => h('i', { class: 'i-mdi:update' }),  // 显示图标
+                },
+            )
+        },
+    },
+    {
+        title: '禁用',
+        key: 'is_disable',
+        width: 30,
+        align: 'center',
+        fixed: 'left',
+        render(row) {
+            return h(NSwitch, {
+                size: 'small',
+                rubberBand: false,
+                value: row.is_disable,  // 控制禁用状态
+                loading: !!row.publishing,  // 显示加载状态
+                onUpdateValue: () => handleUpdateDisable(row),  // 更新禁用状态的回调函数
+            })
+        },
+    },
+    {
+        title: '操作',
+        key: 'actions',
+        width: 60,
+        align: 'center',
+        fixed: 'right',
+        render(row) {
+            return [
+                h(
+                    NButton,
+                    {
+                        size: 'small',
+                        type: 'primary',
+                        onClick: () => {
+                            row.nickname = row.info?.nickname  // 复制昵称
+                            row.role_ids = row.roles.map(e => e.id)  // 获取角色ID
+                            handleEdit(row)  // 触发编辑操作
+                        },
+                    },
+                    {
+                        default: () => '编辑',
+                        icon: () => h('i', { class: 'i-material-symbols:delete-outline' }),  // 编辑按钮图标
+                    },
+                ),
+            ]
+        },
+    },
+]
+
+// 修改用户禁用状态
+async function handleUpdateDisable(row) {
+    if (!row.id) {
+        return  // 如果没有用户ID，则直接返回
+    }
+    row.publishing = true  // 设置为正在发布状态
+    row.is_disable = !row.is_disable  // 切换禁用状态
+    try {
+        await api.updateUserDisable(row.id, row.is_disable)  // 调用 API 更新禁用状态
+        $message?.success(row.is_disable ? '已禁用该用户' : '已取消禁用该用户')  // 显示成功消息
+        $table.value?.handleSearch()  // 刷新表格数据
+    }
+    catch (err) {
+        row.is_disable = !row.is_disable  // 如果失败，恢复原来的禁用状态
+        console.error(err)  // 打印错误
+    }
+    finally {
+        row.publishing = false  // 无论成功与否，取消发布状态
+    }
+}
+</script>
+
+
+
+<style lang="scss" scoped></style>
+```
+
 
 
 ### 11.3.2 online/index.vue
 
+![image-20250210213035534](./assets/image-20250210213035534.png)
+
+**这段代码构建了一个简单的在线用户管理页面，具有以下功能：**
+
+- **搜索在线用户：用户可以通过用户名或昵称进行搜索。**
+- **展示用户信息：表格显示用户的头像、昵称、IP 地址、浏览器信息、操作系统、登录时间等。**
+- **强制下线功能：管理员可以通过点击“下线”按钮强制下线指定的在线用户，并刷新表格以更新用户列表。**
+
+1. **模板结构 (`<template>`)**
+
+- **`CommonPage` 组件**：页面的容器，标题为“在线用户”。它包裹了整个页面，提供了基本的页面布局。
+- **`CrudTable` 组件**：用来展示在线用户的信息。表格通过 `v-model:query-items` 和 `:columns` 来绑定查询条件和表格列，同时使用 `:get-data="api.getOnlineUsers"` 获取在线用户的数据，`:is-pagination="false"` 表示不启用分页。
+- **`QueryItem` 组件**：用于构建搜索框，允许用户通过用户名或昵称来进行搜索。用户输入关键词后，可以按回车触发搜索，查询条件绑定在 `queryItems.keyword` 上。
+
+2. **脚本逻辑 (`<script setup>`)**
+
+- **导入依赖**：
+  - 导入了 `vue` 中的常用功能和 Naive UI 组件，例如 `NButton`, `NInput`, `NPopconfirm` 等。
+  - 引入了自定义组件 `CommonPage`, `QueryItem`, `CrudTable`，以及工具函数和API模块。
+- **`defineOptions`**：设置当前组件名称为“在线用户”，该选项用于在开发中调试和识别组件。
+- **`queryItems`**：存储查询条件，当前只包含一个字段 `keyword`，用于搜索用户名或昵称。
+- **`onMounted`**：在组件挂载时触发 `handleSearch`，即表格初次加载时会自动获取数据并展示。
+- **表格列定义 (`columns`)**：定义了表格的各个列，包括：
+  - **头像**：显示用户的头像，使用 `NImage` 组件展示，头像路径通过 `convertImgUrl(row.info.avatar)` 获取。
+  - **昵称**：显示用户的昵称，如果没有则显示“未知”。
+  - **登录 IP**、**登录地址**、**登录浏览器**、**操作系统**：分别显示用户的 IP 地址、登录地址、浏览器信息和操作系统，若没有信息则显示“未知”。
+  - **登录时间**：显示用户的最后登录时间，使用 `formatDate` 工具函数格式化时间。
+  - **操作列**：提供一个操作按钮来强制下线用户，按钮通过 `NPopconfirm` 组件实现，点击后弹出确认框，确认后触发 `handleForceOffline` 方法强制下线该用户。
+- **`handleForceOffline`**：处理强制下线的功能。
+  - 该函数通过 `api.forceOfflineUser(row.id)` 调用后端API强制下线用户。
+  - 如果成功，下线操作会刷新表格数据，并显示“该用户已被强制下线”的消息。
+  - 如果失败，捕获错误并打印。
+
+```vue
+<template>
+    <CommonPage title="在线用户">
+        <CrudTable ref="$table" v-model:query-items="queryItems" :columns="columns" :get-data="api.getOnlineUsers"
+            :is-pagination="false">
+            <template #queryBar>
+                <QueryItem label="用户名 | 昵称" :label-width="100" :content-width="200">
+                    <NInput v-model:value="queryItems.keyword" clearable type="text" placeholder="搜索关键字"
+                        @keydown.enter="$table?.handleSearch()" />
+                </QueryItem>
+            </template>
+        </CrudTable>
+    </CommonPage>
+</template>
+
+
+<script setup>
+// 导入 Vue 和 Naive UI 相关组件
+import { h, onMounted, ref } from 'vue'
+import { NButton, NImage, NInput, NPopconfirm } from 'naive-ui'
+
+// 导入自定义组件和工具函数
+import CommonPage from '@/components/common/CommonPage.vue'
+import QueryItem from '@/components/crud/QueryItem.vue'
+import CrudTable from '@/components/crud/CrudTable.vue'
+
+import { convertImgUrl, formatDate } from '@/utils'  // 图片路径转换和日期格式化工具函数
+import api from '@/api'  // API 请求模块
+
+// 设置当前组件名称为 "在线用户"
+defineOptions({ name: '在线用户' })
+
+// 表格引用和查询条件
+const $table = ref(null)  // 存储 CrudTable 组件的引用
+const queryItems = ref({
+    keyword: '',  // 用户名或昵称查询
+})
+
+// 在组件挂载时触发表格搜索
+onMounted(() => {
+    $table.value?.handleSearch()  // 触发表格的初始搜索
+})
+
+// 定义表格列
+const columns = [
+    {
+        title: '头像',  // 表格列标题
+        key: 'avatar',  // 列的 key
+        width: 30,  // 列宽度
+        align: 'center',  // 内容居中对齐
+        render(row) {  // 自定义渲染函数
+            return h(NImage, {
+                'height': 30,  // 图片高度
+                'src': convertImgUrl(row.info.avatar),  // 获取图片 URL
+                'fallback-src': 'http://dummyimage.com/400x400',  // 加载失败时显示的占位图
+                'show-toolbar-tooltip': true,  // 显示工具提示
+            })
+        },
+    },
+    {
+        title: '昵称',
+        key: 'nickname',
+        width: 60,
+        align: 'center',
+        ellipsis: { tooltip: true },  // 启用溢出文本显示工具提示
+        render(row) {
+            return h('span', row.info.nickname || '未知')  // 渲染昵称
+        },
+    },
+    {
+        title: '登录 IP',
+        key: 'ip_address',
+        width: 70,
+        align: 'center',
+        ellipsis: { tooltip: true },
+        render(row) {
+            return h('span', row.ip_address || '未知')  // 渲染登录 IP 地址
+        },
+    },
+    {
+        title: '登录地址',
+        key: 'ip_source',
+        width: 70,
+        align: 'center',
+        ellipsis: { tooltip: true },
+        render(row) {
+            return h('span', row.ip_source || '未知')  // 渲染登录地址
+        },
+    },
+    {
+        title: '登录浏览器',
+        key: 'browser',
+        width: 70,
+        align: 'center',
+        ellipsis: { tooltip: true },
+        render(row) {
+            return h('span', row.browser || '未知')  // 渲染浏览器信息
+        },
+    },
+    {
+        title: '操作系统',
+        key: 'os',
+        width: 70,
+        align: 'center',
+        ellipsis: { tooltip: true },
+        render(row) {
+            return h('span', row.os || '未知')  // 渲染操作系统信息
+        },
+    },
+    {
+        title: '登录时间',
+        key: 'last_login_time',
+        align: 'center',
+        width: 70,
+        render(row) {
+            return h('span', formatDate(row.last_login_time, 'YYYY-MM-DD HH:mm:ss'))  // 格式化登录时间
+        },
+    },
+    {
+        title: '操作',
+        key: 'actions',
+        width: 60,
+        align: 'center',
+        fixed: 'right',  // 固定在右侧
+        render(row) {
+            return h(
+                NPopconfirm,
+                { onPositiveClick: () => handleForceOffline(row) },  // 用户点击确认后触发下线操作
+                {
+                    trigger: () =>
+                        h(
+                            NButton,
+                            { size: 'small', type: 'warning' },  // 下线按钮
+                            {
+                                default: () => '下线',  // 按钮文字
+                                icon: () => h('i', { class: 'i-material-symbols:delete-outline' }),  // 图标
+                            },
+                        ),
+                    default: () => h('div', {}, '确定强制该用户下线吗?'),  // 弹出确认框内容
+                },
+            )
+        },
+    },
+]
+
+// 强制用户下线的处理函数
+async function handleForceOffline(row) {
+    try {
+        await api.forceOfflineUser(row.id)  // 调用 API 强制下线用户
+        window.$message.success('该用户已被强制下线!')  // 弹出成功消息
+        $table.value?.handleSearch()  // 刷新表格数据
+    }
+    catch (err) {
+        console.error(err)  // 捕获错误并打印日志
+    }
+}
+</script>
+
+
+<style lang="scss" scoped></style>
+```
+
 
 
 ### 11.3.3 route.js
+
+```javascript
+const Layout = () => import('@/layout/index.vue')
+
+export default {
+  name: 'User',
+  path: '/user',
+  component: Layout,
+  redirect: '/user/list',
+  meta: {
+    title: '用户管理',
+    icon: 'ph:user-list-bold',
+    order: 5,
+    // role: ['admin'],
+    // requireAuth: true,
+  },
+  children: [
+    {
+      name: 'UserList',
+      path: 'list',
+      component: () => import('./list/index.vue'),
+      meta: {
+        title: '用户列表',
+        icon: 'mdi:account',
+        keepAlive: true,
+      },
+    },
+    {
+      name: 'OnlineUserList',
+      path: 'online',
+      component: () => import('./online/index.vue'),
+      meta: {
+        title: '在线用户',
+        icon: 'ic:outline-online-prediction',
+        keepAlive: true,
+      },
+    },
+  ],
+}
+
+```
 
