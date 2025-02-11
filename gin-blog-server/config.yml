@@ -1,0 +1,52 @@
+Server:
+  Mode: debug # debug | release
+  Port: :8765
+  DbType: "mysql" # mysql | sqlite
+  DbAutoMigrate: true # 是否自动迁移数据库表结构 (表结构没变可以不迁移, 提高启动速度)
+  DbLogMode: "error" # 日志级别 silent, error, warn, info, 默认 info
+JWT:
+  Secret: "abc123321"
+  Expire: 24 # hour
+  Issuer: "gin-vue-blog"
+Mysql:
+  Host: "127.0.0.1"
+  Port: "3306"
+  Config: "charset=utf8mb4&parseTime=True&loc=Local" # 其他配置, 例如时区
+  Dbname: "gvb-new"
+  Username: "root"
+  Password: "123456"
+Sqlite:
+  Dsn: "gvb.db"
+Redis:
+  DB: 7
+  Addr: '127.0.0.1:6379'
+  Password: ''
+Session:
+  Name: "mysession"
+  Salt: "salt"
+  MaxAge: 600 # second
+Log:
+  Level: "debug" # debug | info | warn | error
+  Format: "text" # text | json
+  Directory: "log"
+Email:
+  Host: "smtp.qq.com" # 服务器地址, 例如 smtp.qq.com 前往要发邮件的邮箱查看其 smtp 协议
+  Port: 465  # 前往要发邮件的邮箱查看其 smtp 协议端口, 大多为 465
+  From: "" # 发件人 (邮箱)
+  SmtpPass: "" # 密钥, 不是邮箱登录密码, 是开启 smtp 服务后获取的一串验证码
+  SmtpUser: "" # 发件人昵称, 通常为自己的邮箱名
+Captcha:
+  SendEmail: true # 通过邮箱发送验证码
+  ExpireTime: 15  # 过期时间 (分钟)
+Upload:
+  OssType: "local" # local | qiniu
+  Path: "public/uploaded"      # 本地文件访问路径: OssType="local" 生效
+  StorePath: "../public/uploaded" # 本地文件上传路径: 相对于 main.go, OssType="local" 生效
+Qiniu:
+  ImgPath: "" # 外链
+  Zone: ""
+  Bucket: ""
+  AccessKey: ""
+  SecretKey: ""
+  UseHttps: false
+  UseCdnDomains: false
