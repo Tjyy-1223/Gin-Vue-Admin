@@ -2031,8 +2031,257 @@ func main() {
 
 ## 12.7 Handler - 路由配置
 
+用来配置路由请求 -> 对应的请求处理方法
 
+### 12.7.1 基础的路由测试
+
+在 Gin 框架中，编写一个最基础的 GET 请求响应非常简单。你只需要定义一个路由处理函数，并使用 `gin.Default()` 创建一个默认的 Gin 引擎。然后，你可以通过 `GET` 方法来处理 HTTP 请求并发送响应。
+
+```go
+package main
+
+import (
+    "github.com/gin-gonic/gin"
+)
+
+func main() {
+    // 创建一个默认的 Gin 引擎
+    r := gin.Default()
+
+    // 定义一个 GET 路由，处理 /hello 请求
+    r.GET("/hello", func(c *gin.Context) {
+        // 向客户端返回一个 JSON 响应
+        c.JSON(200, gin.H{
+            "message": "Hello, world!",
+        })
+    })
+
+    // 启动服务器，监听在 8080 端口
+    r.Run(":8080")
+}
+```
+
+1. **`gin.Default()`**：创建一个默认的 Gin 引擎实例，该实例包含一些默认的中间件，例如日志记录和恢复中间件。
+2. **`r.GET("/hello", ...)`**：定义一个处理 GET 请求的路由。当客户端访问 `/hello` 路径时，Gin 会调用该处理函数。
+3. **`c.JSON(200, gin.H{"message": "Hello, world!"})`**：返回一个 JSON 响应，其中 `200` 是 HTTP 状态码，`gin.H` 是一个简化的 `map[string]interface{}` 用来构造 JSON 数据。
+4. **`r.Run(":8080")`**：启动服务器并监听端口 `8080`，此时可以通过 `http://localhost:8080/hello` 来访问这个路由。
+
+
+
+### 12.7.2 配置 swagger
+
+**具体参考：https://juejin.cn/post/7224753971168116796**
+
+**swag init 失效解决：https://blog.csdn.net/weixin_41989013/article/details/132308837**
+
+在 Go 中配置 Swagger 文档通常需要借助第三方库来生成和提供 API 文档。最常用的工具是 **`swaggo/swag`**，它能自动生成 Swagger 文档并集成到 Go 应用程序中。下面是一个简单的步骤说明，教你如何在 Go 中使用 `swaggo/swag` 配置 Swagger 文档。
+
+##### 步骤 1: 安装相关依赖
+
+首先，你需要安装 `swaggo/swag` 以及 `swaggo/gin-swagger`。`swag` 用于生成 Swagger 文档，而 `gin-swagger` 用于将其集成到 Gin 框架中。
+
+```
+// 安装swag
+go get install github.com/swaggo/swag/cmd/swag
+
+// 引入依赖
+go get -u github.com/swaggo/gin-swagger
+go get -u github.com/swaggo/files
+```
+
+##### 步骤 2: 初始化 Swagger 配置
+
+1. **在项目中生成 Swagger 文档**：
+
+   你可以通过 `swag init` 命令来生成文档。它会扫描你的代码中的注释并生成相应的 Swagger 配置文件。
+
+   在项目的根目录运行以下命令：
+
+   ```
+   swag init
+   ```
+
+   这将会生成一个 `docs` 文件夹，里面包含了 `docs.go` 和 `swagger.json` 文件，它们是 Swagger 文档的基础。
+
+2. **配置 Gin 和 Swagger 集成**：
+
+   接下来你需要在你的 Gin 路由中集成 Swagger UI，使得你可以通过浏览器查看 API 文档。
+
+##### 步骤 3: 编写代码并生成文档
+
+你可以通过注释的方式为每个路由生成 Swagger 文档。下面是一个示例：
+
+```go
+package main
+
+import (
+	"github.com/gin-gonic/gin"
+	"github.com/swaggo/gin-swagger"
+	"github.com/swaggo/gin-swagger/swaggerFiles"
+	_ "your_project/docs" // 引入生成的 docs 包
+)
+
+// @title 你的 API 标题
+// @version 1.0
+// @description 这是一个简单的 Gin 示例 API
+// @contact.name API 联系人
+// @contact.url https://www.example.com
+// @contact.email example@example.com
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+// @host localhost:8080
+func main() {
+	r := gin.Default()
+
+	// Swagger API 文档路由
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	// 示例路由：获取 Hello 信息
+	// @Summary 获取 Hello 信息
+	// @Description 返回一个简单的 Hello 信息
+	// @Tags Hello
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} map[string]string
+	// @Router /hello [get]
+	r.GET("/hello", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"message": "Hello, world!",
+		})
+	})
+
+	r.Run(":8080")
+}
+```
+
+##### 步骤 4: 添加 Swagger 注释
+
+在代码中，你可以通过注释来描述 API 的详细信息，例如路由路径、请求参数、响应类型等。使用 **`@`** 来标记不同的 Swagger 注释，常见的注释如下：
+
+- **`@title`**：API 标题
+- **`@version`**：API 版本
+- **`@description`**：API 描述
+- **`@contact.name`**、**`@contact.url`**、**`@contact.email`**：API 联系人信息
+- **`@license.name`**、**`@license.url`**：API 许可信息
+- **`@host`**：API 主机地址
+- **`@Router`**：路由信息
+
+对于每个路由，你可以通过类似 `@Summary`、`@Description`、`@Success` 等注释来描述接口功能、请求和响应。
+
+例如，`r.GET("/hello")` 路由的注释描述了它的返回值、成功状态码等。
+
+##### **步骤 5: 生成文档**
+
+每次修改或更新了 API 路由和注释后，都可以通过以下命令重新生成 Swagger 文档：
+
+```
+swag init
+```
+
+此命令会扫描项目中的注释并生成 Swagger 配置文件，通常会在 `docs` 目录中找到 `swagger.json` 和 `docs.go` 文件。
+
+步骤 6: 运行项目
+
+运行你的 Gin 项目：
+
+```
+go run main.go
+```
+
+然后，访问浏览器中的 `http://localhost:8080/swagger/index.html`，你将看到生成的 Swagger UI 页面，展示了所有的 API 路由和文档。
+
+
+
+### 12.7.3 简化版 manager.go
+
+```go
+func RegisterHandlers(r *gin.Engine) {
+	// Swagger 配置：设置 Swagger API 文档的基础路径为 /api
+	// SwaggerInfo 是由 `swaggo/swag` 生成的文档信息配置结构体
+	docs.SwaggerInfo.BasePath = "/api" // 设置 Swagger 文档的基础路径为 "/api"
+
+	// 注册 Swagger UI 路由，`ginSwagger.WrapHandler` 会将 Swagger 文档与 UI 渲染结合
+	// 这样用户可以通过访问 `/swagger` 路由来查看 API 文档
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	// 调用 registerBaseHandler 注册其他基础的路由处理
+	// 例如，可能是一些常见的基础 API 路由
+	registerBaseHandler(r)
+}
+
+
+
+// 通用接口: 全部不需要 登录 + 鉴权
+func registerBaseHandler(r *gin.Engine) {
+	r.Group("/api")
+
+	// TODO: 登录, 注册 记录日志
+	//base.POST("/login", userAuthAPI.Login) // 登录
+}
+```
 
 
 
 ## 12.8 后端初始化 - main.go
+
+最后，给出整体的后端初始化代码 main.go:
+
+```go
+package main
+
+import (
+	"flag"
+	ginblog "gin-blog-server/internal"
+	"gin-blog-server/internal/global"
+	"gin-blog-server/internal/middleware"
+	"github.com/gin-gonic/gin"
+	"log"
+	"strings"
+)
+
+func main() {
+	configPath := flag.String("c", "./config.yml", "配置文件路径")
+	flag.Parse()
+
+	// 根据文件路径读取配置文件
+	conf := global.ReadConfig(*configPath)
+
+	_ = ginblog.InitLogger(conf)
+	db := ginblog.InitDatabase(conf)
+	rdb := ginblog.InitRedis(conf)
+
+	// 初始化 gin 服务
+	gin.SetMode(conf.Server.Mode)
+	r := gin.New()
+	r.SetTrustedProxies([]string{"*"})
+
+	// 开发模式使用 gin 自带的日志和恢复中间件, 生产模式使用自定义的中间件
+	if conf.Server.Mode == "debug" {
+		r.Use(gin.Logger(), gin.Recovery()) // gin 自带的日志和恢复中间件, 挺好用的
+	} else {
+		r.Use(middleware.Recovery(true), middleware.Logger())
+	}
+
+	r.Use(middleware.CORS())
+	r.Use(middleware.WithGormDB(db))
+	r.Use(middleware.WithRedisDB(rdb))
+	r.Use(middleware.WithCookieStore(conf.Session.Name, conf.Session.Salt))
+
+	ginblog.RegisterHandlers(r)
+
+	// 使用本地文件上传, 需要静态文件服务, 使用七牛云不需要
+	if conf.Upload.OssType == "local" {
+		r.Static(conf.Upload.Path, conf.Upload.StorePath)
+	}
+
+	serverAddr := conf.Server.Port
+	if serverAddr[0] == ':' || strings.HasPrefix(serverAddr, "0.0.0.0:") {
+		log.Printf("Serving HTTP on (http://localhost:%s/) ... \n", strings.Split(serverAddr, ":")[1])
+	} else {
+		log.Printf("Serving HTTP on (http://%s/) ... \n", serverAddr)
+	}
+	r.Run(serverAddr)
+}
+```
+
+**之后，我们只需要根据前端的请求，来补充后端的接口，即可以完成对应的任务**

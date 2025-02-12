@@ -6,6 +6,8 @@ import (
 	"gin-blog-server/internal/global"
 	"gin-blog-server/internal/middleware"
 	"github.com/gin-gonic/gin"
+	"log"
+	"strings"
 )
 
 func main() {
@@ -35,4 +37,21 @@ func main() {
 	r.Use(middleware.WithGormDB(db))
 	r.Use(middleware.WithRedisDB(rdb))
 	r.Use(middleware.WithCookieStore(conf.Session.Name, conf.Session.Salt))
+
+	ginblog.RegisterHandlers(r)
+
+	// 使用本地文件上传, 需要静态文件服务, 使用七牛云不需要
+	if conf.Upload.OssType == "local" {
+		r.Static(conf.Upload.Path, conf.Upload.StorePath)
+	}
+
+	serverAddr := conf.Server.Port
+	log.Print(serverAddr)
+	if serverAddr[0] == ':' || strings.HasPrefix(serverAddr, "0.0.0.0:") {
+		log.Printf("Serving HTTP on (http://localhost:%s/) ... \n", strings.Split(serverAddr, ":")[1])
+	} else {
+		log.Printf("Serving HTTP on (http://%s/) ... \n", serverAddr)
+	}
+	r.Run(serverAddr)
+
 }
