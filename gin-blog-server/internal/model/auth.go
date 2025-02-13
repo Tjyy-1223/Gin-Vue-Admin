@@ -1,0 +1,114 @@
+package model
+
+import (
+	"gorm.io/gorm"
+	"time"
+)
+
+// UserAuth 代表用户认证信息
+type UserAuth struct {
+	Model
+	Username      string     `gorm:"unique;type:varchar(50)" json:"username"`           // 用户名，唯一，最大长度为50
+	Password      string     `gorm:"type:varchar(100)" json:"-"`                        // 密码，最大长度为100，不会被JSON序列化
+	LoginType     int        `gorm:"type:tinyint(1);comment:登录类型" json:"login_type"`    // 登录类型，Tinyint 类型，表示不同的登录方式（例如：用户名/密码、第三方登录等）
+	IpAddress     string     `gorm:"type:varchar(20);comment:登录IP地址" json:"ip_address"` // 登录IP地址，最大长度为20
+	IpSource      string     `gorm:"type:varchar(50);comment:IP来源" json:"ip_source"`    // IP来源，最大长度为50
+	LastLoginTime *time.Time `json:"last_login_time"`                                   // 上次登录时间，类型为指针，以便为null
+	IsDisable     bool       `json:"is_disable"`                                        // 是否禁用，布尔值，表示该用户是否被禁用
+	IsSuper       bool       `json:"is_super"`                                          // 是否超级管理员，布尔值，超级管理员只能由后台设置
+	UserInfoId    int        `json:"user_info_id"`                                      // 关联的用户信息表ID
+	UserInfo      *UserInfo  `json:"info"`                                              // 关联的用户信息
+	Roles         []*Role    `json:"roles" gorm:"many2many:user_auth_role"`             // 用户角色，表示与角色的多对多关系
+}
+
+// Role 代表系统中的角色
+type Role struct {
+	Model
+	Name      string `gorm:"unique" json:"name"`  // 角色名称，唯一
+	Label     string `gorm:"unique" json:"label"` // 角色标签，唯一
+	IsDisable bool   `json:"is_disable"`          // 是否禁用该角色，布尔值
+
+	Resources []Resource `json:"resources" gorm:"many2many:role_resource"` // 角色拥有的资源，表示与资源的多对多关系
+	Menus     []Menu     `json:"menus" gorm:"many2many:role_menu"`         // 角色拥有的菜单，表示与菜单的多对多关系
+	Users     []UserAuth `json:"users" gorm:"many2many:user_auth_role"`    // 角色关联的用户，表示与用户的多对多关系
+}
+
+// Resource 代表系统中的资源
+type Resource struct {
+	Model
+	Name      string `gorm:"unique;type:varchar(50)" json:"name"`    // 资源名称，最大长度为50，唯一
+	ParentId  int    `json:"parent_id"`                              // 父资源ID，表示资源之间的层级关系
+	Url       string `gorm:"type:varchar(255)" json:"url"`           // 资源的URL地址
+	Method    string `gorm:"type:varchar(10)" json:"request_method"` // 请求方法，例如 GET, POST, PUT, DELETE 等
+	Anonymous bool   `json:"is_anonymous"`                           // 是否是匿名访问的资源，布尔值，表示该资源是否不需要登录
+
+	Roles []*Role `json:"roles" gorm:"many2many:role_resource"` // 资源关联的角色，表示与角色的多对多关系
+}
+
+/*
+菜单设计:
+
+目录: catalogue === true
+  - 如果是目录，作为单独项，不展开子菜单（例如 "首页", "个人中心"）
+  - 如果不是目录，且 parent_id 为 0，则为一级菜单，可以展开子菜单（例如 "文章管理" 下有 "文章列表", "文章分类", "文章标签" 等子菜单）
+  - 如果不是目录，且 parent_id 不为 0，则为二级菜单
+
+隐藏: hidden
+  - 隐藏则不显示在菜单栏中
+
+外链: external, external_link
+  - 如果是外链，如果设置为外链，则点击后会在新窗口打开
+*/
+
+// Menu 代表系统中的菜单
+type Menu struct {
+	Model
+	ParentId     int    `json:"parent_id"`                                                  // 父菜单ID，用于标识菜单的层级关系
+	Name         string `gorm:"uniqueIndex:idx_name_and_path;type:varchar(20)" json:"name"` // 菜单名称，唯一索引
+	Path         string `gorm:"uniqueIndex:idx_name_and_path;type:varchar(50)" json:"path"` // 菜单的路由地址，唯一索引
+	Component    string `gorm:"type:varchar(50)" json:"component"`                          // 菜单组件路径
+	Icon         string `gorm:"type:varchar(50)" json:"icon"`                               // 菜单图标
+	OrderNum     int8   `json:"order_num"`                                                  // 菜单排序
+	Redirect     string `gorm:"type:varchar(50)" json:"redirect"`                           // 菜单重定向地址
+	Catalogue    bool   `json:"is_catalogue"`                                               // 是否为目录，目录项不展开子菜单
+	Hidden       bool   `json:"is_hidden"`                                                  // 是否隐藏该菜单，隐藏则不显示在菜单栏
+	KeepAlive    bool   `json:"keep_alive"`                                                 // 是否缓存该菜单
+	External     bool   `json:"is_external"`                                                // 是否为外链菜单
+	ExternalLink string `gorm:"type:varchar(255)" json:"external_link"`                     // 外链地址
+
+	Roles []*Role `json:"roles" gorm:"many2many:role_menu"` // 菜单关联的角色，表示与角色的多对多关系
+}
+
+type UserAuthRole struct {
+	UserAuthId int `gorm:"primaryKey;uniqueIndex:idx_user_auth_role"`
+	RoleId     int `gorm:"primaryKey;uniqueIndex:idx_user_auth_role"`
+}
+
+type RoleResource struct {
+	RoleId     int `json:"-" gorm:"primaryKey;uniqueIndex:idx_role_resource"`
+	ResourceId int `json:"-" gorm:"primaryKey;uniqueIndex:idx_role_resource"`
+}
+
+type RoleMenu struct {
+	RoleId int `json:"-" gorm:"primaryKey;uniqueIndex:idx_role_menu"`
+	MenuId int `json:"-" gorm:"primaryKey;uniqueIndex:idx_role_menu"`
+}
+
+// GetRoleIdsByUserId 根据用户的 UserAuthId 查询该用户拥有的角色 ID 列表
+// 参数:
+//
+//	db - GORM 数据库连接对象，用于执行查询操作
+//	userAuthId - 用户的 UserAuthId，作为查询条件
+//
+// 返回:
+//   - ids：用户所拥有的角色 ID 列表
+//   - err：查询过程中发生的错误。如果没有错误，则返回 nil
+func GetRoleIdsByUserId(db *gorm.DB, userAuthId int) (ids []int, err error) {
+	// 使用 GORM 查询方式，获取用户角色表（UserAuthRole）中与 userAuthId 对应的所有 role_id
+	// Model(&UserAuthRole{UserAuthId: userAuthId})：指定查询的目标表为 UserAuthRole 表，并且条件是 UserAuthId 等于传入的 userAuthId
+	// Pluck("role_id", &ids)：查询所有的 role_id，并将结果存入 ids 切片
+	result := db.Model(&UserAuthRole{UserAuthId: userAuthId}).Pluck("role_id", &ids)
+
+	// 返回查询结果：ids 包含所有角色 ID，result.Error 包含可能发生的错误
+	return ids, result.Error
+}

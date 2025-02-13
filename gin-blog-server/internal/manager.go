@@ -2,9 +2,15 @@ package ginblog
 
 import (
 	"gin-blog-server/docs"
+	"gin-blog-server/internal/handle"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+)
+
+var (
+	// 后端管理系统接口
+	userAuthAPI handle.UserAuth // 用户账号
 )
 
 func RegisterHandlers(r *gin.Engine) {
@@ -23,8 +29,8 @@ func RegisterHandlers(r *gin.Engine) {
 
 // 通用接口: 全部不需要 登录 + 鉴权
 func registerBaseHandler(r *gin.Engine) {
-	r.Group("/api")
+	base := r.Group("/api")
 
 	// TODO: 登录, 注册 记录日志
-	//base.POST("/login", userAuthAPI.Login) // 登录
+	base.POST("/login", userAuthAPI.Login) // 登录
 }

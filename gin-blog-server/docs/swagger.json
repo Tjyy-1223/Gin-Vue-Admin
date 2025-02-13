@@ -3,5 +3,128 @@
     "info": {
         "contact": {}
     },
-    "paths": {}
+    "paths": {
+        "/login": {
+            "post": {
+                "description": "登录",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "UserAuth"
+                ],
+                "summary": "登录",
+                "parameters": [
+                    {
+                        "description": "登录",
+                        "name": "form",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handle.LoginReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "0": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/handle.Response-handle_LoginVO"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "handle.LoginReq": {
+            "type": "object",
+            "required": [
+                "password",
+                "username"
+            ],
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "handle.LoginVO": {
+            "type": "object",
+            "properties": {
+                "article_like_set": {
+                    "description": "点赞 Set： 用于记录用户点赞过的文章，评论",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "avatar": {
+                    "description": "用户头像，最大长度1024字符，不能为空",
+                    "type": "string"
+                },
+                "comment_like_set": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "description": "用户的邮箱，最大长度30字符，保存用户的电子邮件地址",
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "intro": {
+                    "description": "用户个人简介，最大长度255字符，用于描述用户的个人信息或介绍",
+                    "type": "string"
+                },
+                "nickname": {
+                    "description": "用户的昵称，唯一，最大长度30字符，不能为空",
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "website": {
+                    "description": "用户的个人网站链接，最大长度255字符，用于存储用户的官网、博客等链接",
+                    "type": "string"
+                }
+            }
+        },
+        "handle.Response-handle_LoginVO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "业务状态码",
+                    "type": "integer"
+                },
+                "data": {
+                    "description": "响应数据",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/handle.LoginVO"
+                        }
+                    ]
+                },
+                "message": {
+                    "description": "响应消息",
+                    "type": "string"
+                }
+            }
+        }
+    }
 }
