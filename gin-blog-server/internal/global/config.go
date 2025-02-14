@@ -49,7 +49,7 @@ type Config struct {
 		MaxAge int    // Session 最大过期时间（秒）
 	}
 	Email struct {
-		Form     string // 发件人邮箱
+		From     string // 发件人邮箱
 		Host     string // SMTP 服务器地址（例如 smtp.qq.com）
 		Port     int    // SMTP 端口（一般为 465）
 		SmtpPass string // SMTP 密钥（开启SMTP时获取的密钥，而非邮箱密码）

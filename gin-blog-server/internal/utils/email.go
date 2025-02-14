@@ -89,7 +89,7 @@ func GetEmailData(email string, info string) *EmailData {
 func GetEmailVerifyURL(info string) string {
 	baseurl := global.GetConfig().Server.Port
 	if baseurl[0] == ':' {
-		baseurl = fmt.Sprintf("localhost:%s", baseurl)
+		baseurl = fmt.Sprintf("localhost%s", baseurl)
 	}
 	// 如果是用docker部署,则 注释上面的代码，使用下面的代码
 	// baseurl := "你的域名"   切记不需要加端口
@@ -103,7 +103,7 @@ func GetEmailVerifyURL(info string) string {
 // 以下情况会发生错误: 1. 邮箱配置错误,smtp信息错误 2. 修改模板后,解析模板失败!
 func SendEmail(email string, data *EmailData) error {
 	config := global.GetConfig().Email
-	from := config.Form
+	from := config.From
 	Pass := config.SmtpPass
 	User := config.SmtpUser
 	to := email
@@ -114,7 +114,7 @@ func SendEmail(email string, data *EmailData) error {
 
 	var body bytes.Buffer
 	// 解析模版
-	template, err := ParseTemplateDir("../assets/templates")
+	template, err := ParseTemplateDir("./assets/templates")
 	if err != nil {
 		return errors.New("解析模版失败")
 	}

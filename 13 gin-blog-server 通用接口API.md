@@ -636,13 +636,24 @@ func (*UserAuth) Register(c *gin.Context) {
 }
 ```
 
-对于操作来讲，首先需要将 config.yml 中的邮箱配置进行配置好：
+对于操作来讲，首先需要将 config.yml 中的邮箱配置进行配置好：From -> SmtpPass ->   SmtpUser
 
 ```yml
-
+Email:
+  Host: "smtp.qq.com" # 服务器地址, 例如 smtp.qq.com 前往要发邮件的邮箱查看其 smtp 协议
+  Port: 465  # 前往要发邮件的邮箱查看其 smtp 协议端口, 大多为 465
+  From: "" # 发件人 (邮箱)
+  SmtpPass: "" # 密钥, 不是邮箱登录密码, 是开启 smtp 服务后获取的一串验证码
+  SmtpUser: "" # 发件人昵称, 通常为自己的邮箱名
 ```
 
 之后，我们进行注册操作：
+
+![image-20250214154133285](./assets/image-20250214154133285.png)
+
+![image-20250214161839195](./assets/image-20250214161839195.png)
+
+之后我们继续道 13.8 中邮箱验证，完成注册操作
 
 
 
@@ -666,6 +677,8 @@ func (*UserAuth) Register(c *gin.Context) {
 
 ## 13.8 邮箱验证 - email/verify
 
+![image-20250214161946295](./assets/image-20250214161946295.png)
+
 当用户点击邮箱中的链接时，会携带 info（加密后的帐号密码）向这个接口发送请求。Verify 会检查 info 是否存在 redis 中，若存在则认证成功，完成注册。
 
 会在以下方面出错： 
@@ -683,6 +696,154 @@ base.GET("/email/verify", userAuthAPI.VerifyCode) // 邮箱验证
 internal/handle/handle_auth.go
 
 ```go
+// VerifyCode 邮箱验证
+// 当用户点击邮箱中的链接时，会携带info（加密后的帐号密码）向这个接口发送请求。
+// Verify会检查info是否存在redis中，若存在则认证成功，完成注册
+// 会在以下方面出错： 1. 发送信息中没有info 2. info不存在redis中(已过期) 3. 创造新用户失败（数据库操作失败）
+func (*UserAuth) VerifyCode(c *gin.Context) {
+	var code string
+	if code = c.Query("info"); code == "" {
+		returnErrorPage(c)
+		return
+	}
+	// 验证是否在 redis 数据库中
+	ifExist, err := GetMailInfo(GetRDB(c), code)
+	if err != nil {
+		returnErrorPage(c)
+		return
+	}
+	if !ifExist {
+		returnErrorPage(c)
+		return
+	}
+
+	err = DeleteMailInfo(GetRDB(c), code)
+	if err != nil {
+		returnErrorPage(c)
+		return
+	}
+
+	// 从 code 中解析出来 用户名 和 密码
+	username, password, err := utils.ParseEmailVerificationInfo(code)
+	if err != nil {
+		returnErrorPage(c)
+		return
+	}
+
+	// 注册用户
+	_, _, _, err = model.CreateNewUser(GetDB(c), username, password)
+	if err != nil {
+		returnErrorPage(c)
+		return
+	}
+
+	// 注册成功，返回成功页面
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(`
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>注册成功</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    background-color: #f4f4f4;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                }
+                .container {
+                    background-color: #fff;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                    text-align: center;
+                }
+                h1 {
+                    color: #5cb85c;
+                }
+                p {
+                    color: #333;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>注册成功</h1>
+                <p>恭喜您，注册成功！</p>
+            </div>
+        </body>
+        </html>
+    `))
+}
+
+// c.Data 可以用来直接返回原始字节数据，而不是使用 Gin 中的 c.JSON、c.String 等方法。它特别适合于返回 非结构化数据，例如 HTML 页面、文本或文件。
+func returnErrorPage(c *gin.Context) {
+	c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte(`
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>注册失败</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    background-color: #f4f4f4;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                }
+                .container {
+                    background-color: #fff;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                    text-align: center;
+                }
+                h1 {
+                    color: #d9534f;
+                }
+                p {
+                    color: #333;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>注册失败</h1>
+                <p>请重试。</p>
+            </div>
+        </body>
+        </html>
+    `))
+}
 
 ```
 
+**点击激活账户之后，或者将`localhost::8765/api/email/verify?info=MTEyMzM1MTUwOUBxcS5jb218MTIzNDU2fEJnWEo1TGhCZ3A0Z0NQWFAxdjVFOFpabw==`复制到浏览器之后，会跳转到：**
+
+<img src="./assets/image-20250214163245252.png" alt="image-20250214163245252" style="zoom:50%;" />
+
+如果再刷新一下，会启动防止重复注册的流程，报错如下：
+
+<img src="./assets/image-20250214163343095.png" alt="image-20250214163343095" style="zoom:67%;" />
+
+**然后我们可以去尝试查看数据库中的数据，并尝试登陆操作：**
+
+![image-20250214163603512](./assets/image-20250214163603512.png)
+
+![image-20250214163649140](./assets/image-20250214163649140.png)
+
+**登陆成功账号如下：成功携带了 token 返回**
+
+![image-20250214163937010](./assets/image-20250214163937010.png)
+
+但是，由于还没有实现 info 接口，所以登陆还不能够完全登陆。下面的info接口会携带着 jwt token 去进行后端请求
+
+![image-20250214164125342](./assets/image-20250214164125342.png)
