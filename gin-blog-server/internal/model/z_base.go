@@ -32,3 +32,17 @@ type Model struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// Count 根据 where 条件统计数据
+func Count[T any](db *gorm.DB, data *T, where ...any) (int, error) {
+	var total int64
+	db = db.Model(data)
+	if len(where) > 0 {
+		db = db.Where(where[0], where[1:]...)
+	}
+	result := db.Count(&total)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return int(total), nil
+}

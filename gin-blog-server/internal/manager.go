@@ -32,5 +32,7 @@ func registerBaseHandler(r *gin.Engine) {
 	base := r.Group("/api")
 
 	// TODO: 登录, 注册 记录日志
-	base.POST("/login", userAuthAPI.Login) // 登录
+	base.POST("/login", userAuthAPI.Login)            // 登录
+	base.POST("/register", userAuthAPI.Register)      // 注册
+	base.GET("/email/verify", userAuthAPI.VerifyCode) // 邮箱验证
 }

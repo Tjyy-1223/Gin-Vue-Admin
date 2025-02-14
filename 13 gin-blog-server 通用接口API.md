@@ -558,6 +558,92 @@ func (*UserAuth) Login(c *gin.Context) {
 
 ## 13.3 注册接口 - register
 
+**要完成注册接口，需要同时完成 13.8 email/verify 接口，其核心逻辑如下：**
+
+1. 点击注册之后，首先检查用户名是否存在，避免重复注册
+2. 其次把用户输入的信息加密保存在 redis 中，等待验证
+3. register 接口会触发发送邮箱，注册邮箱会收到对应的邮件
+4. 点击邮件中的链接，其中会渲染一个 html 网址，点击链接可以向接口发送 localhost/api/email/verify?info={info} 请求，`info := Encode(email + "|" + password + "|" + code)`，因为采用 Encode 编码
+
+5. 触发 localhost/api/email/verify?info={info} 接口，将对应的 info 信息中的用户名和密码存储到数据库中
+
+------
+
+internal/manager.go
+
+```go
+base.POST("/register", userAuthAPI.Register) // 注册
+```
+
+**注册的核心逻辑：**
+
+```go
+// Register 完成注册功能
+// 首先检查用户名是否存在，避免重复注册；其次吧用户输入的信息加密保存在 redis 中，等待验证
+// 在以下情况下会出错：1-用户邮箱已经注册过；2-用户邮箱无效等原因导致邮件发送失败
+// @Summary 注册
+// @Description 注册
+// @Tags UserAuth
+// @Param form body RegisterReq true "注册"
+// @Accept json
+// @Produce json
+// @Success 0 {object} Response[] "返回空数组"
+// @Router /register [post]
+func (*UserAuth) Register(c *gin.Context) {
+	var req RegisterReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+	// 格式化用户名
+	req.Username = utils.Format(req.Username)
+
+	// 检查用户名是否存在，避免重复注册
+	auth, err := model.GetUserAuthInfoByName(GetDB(c), req.Username)
+	if err != nil {
+		var flag = false
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			flag = true
+		}
+		if !flag {
+			ReturnError(c, global.ErrDbOp, err)
+			return
+		}
+	}
+
+	// 用户名重复，不能正常进行注册
+	if auth != nil {
+		ReturnError(c, global.ErrUserExist, err)
+		return
+	}
+
+	// 通过邮箱验证后才可以完成注册
+	info := utils.GenEmailVerificationInfo(req.Username, req.Password)
+	err = SetMailInfo(GetRDB(c), info, 15*time.Minute)
+	if err != nil {
+		ReturnError(c, global.ErrRedisOp, err)
+		return
+	}
+
+	EmailData := utils.GetEmailData(req.Username, info)
+	err = utils.SendEmail(req.Username, EmailData)
+	if err != nil {
+		ReturnError(c, global.ErrSendEmail, err)
+		return
+	}
+
+	ReturnSuccess(c, nil)
+}
+```
+
+对于操作来讲，首先需要将 config.yml 中的邮箱配置进行配置好：
+
+```yml
+
+```
+
+之后，我们进行注册操作：
+
 
 
 
@@ -579,3 +665,24 @@ func (*UserAuth) Login(c *gin.Context) {
 
 
 ## 13.8 邮箱验证 - email/verify
+
+当用户点击邮箱中的链接时，会携带 info（加密后的帐号密码）向这个接口发送请求。Verify 会检查 info 是否存在 redis 中，若存在则认证成功，完成注册。
+
+会在以下方面出错： 
+
+1. 发送信息中没有info 
+2. info不存在redis中(已过期) 
+3. 创造新用户失败（数据库操作失败
+
+**internal/manager.go**
+
+```
+base.GET("/email/verify", userAuthAPI.VerifyCode) // 邮箱验证
+```
+
+internal/handle/handle_auth.go
+
+```go
+
+```
+

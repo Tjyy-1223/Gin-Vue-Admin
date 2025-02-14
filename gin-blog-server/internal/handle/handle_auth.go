@@ -10,7 +10,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	"log/slog"
+	"net/http"
 	"strconv"
+	"time"
 )
 
 type UserAuth struct{}
@@ -19,6 +21,11 @@ type UserAuth struct{}
 type LoginReq struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
+}
+
+type RegisterReq struct {
+	Username string `json:"email" binding:"required"`
+	Password string `json:"password" binding:"required,min=4,max=20"`
 }
 
 // LoginVO 登陆信息返回给前端的数据
@@ -31,6 +38,7 @@ type LoginVO struct {
 	Token          string   `json:"token"`
 }
 
+// Login 完成登陆操作
 // @Summary 登录
 // @Description 登录
 // @Tags UserAuth
@@ -154,4 +162,189 @@ func (*UserAuth) Login(c *gin.Context) {
 		CommentLikeSet: commentLikeSet, // 返回用户的评论点赞记录
 		Token:          token,          // 返回生成的 JWT Token
 	})
+}
+
+// Register 完成注册功能
+// 首先检查用户名是否存在，避免重复注册；其次吧用户输入的信息加密保存在 redis 中，等待验证
+// 在以下情况下会出错：1-用户邮箱已经注册过；2-用户邮箱无效等原因导致邮件发送失败
+// @Summary 注册
+// @Description 注册
+// @Tags UserAuth
+// @Param form body RegisterReq true "注册"
+// @Accept json
+// @Produce json
+// @Success 0 {object} Response[] "返回空数组"
+// @Router /register [post]
+func (*UserAuth) Register(c *gin.Context) {
+	var req RegisterReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+	// 格式化用户名
+	req.Username = utils.Format(req.Username)
+
+	// 检查用户名是否存在，避免重复注册
+	auth, err := model.GetUserAuthInfoByName(GetDB(c), req.Username)
+	if err != nil {
+		var flag = false
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			flag = true
+		}
+		if !flag {
+			ReturnError(c, global.ErrDbOp, err)
+			return
+		}
+	}
+
+	// 用户名重复，不能正常进行注册
+	if auth != nil {
+		ReturnError(c, global.ErrUserExist, err)
+		return
+	}
+
+	// 通过邮箱验证后才可以完成注册
+	info := utils.GenEmailVerificationInfo(req.Username, req.Password)
+	err = SetMailInfo(GetRDB(c), info, 15*time.Minute)
+	if err != nil {
+		ReturnError(c, global.ErrRedisOp, err)
+		return
+	}
+
+	EmailData := utils.GetEmailData(req.Username, info)
+	err = utils.SendEmail(req.Username, EmailData)
+	if err != nil {
+		ReturnError(c, global.ErrSendEmail, err)
+		return
+	}
+
+	ReturnSuccess(c, nil)
+}
+
+// VerifyCode 邮箱验证
+// 当用户点击邮箱中的链接时，会携带info（加密后的帐号密码）向这个接口发送请求。
+// Verify会检查info是否存在redis中，若存在则认证成功，完成注册
+// 会在以下方面出错： 1. 发送信息中没有info 2. info不存在redis中(已过期) 3. 创造新用户失败（数据库操作失败）
+func (*UserAuth) VerifyCode(c *gin.Context) {
+	var code string
+	if code = c.Query("info"); code == "" {
+		returnErrorPage(c)
+		return
+	}
+	// 验证是否在 redis 数据库中
+	ifExist, err := GetMailInfo(GetRDB(c), code)
+	if err != nil {
+		returnErrorPage(c)
+		return
+	}
+	if !ifExist {
+		returnErrorPage(c)
+		return
+	}
+
+	err = DeleteMailInfo(GetRDB(c), code)
+	if err != nil {
+		returnErrorPage(c)
+		return
+	}
+
+	// 从 code 中解析出来 用户名 和 密码
+	username, password, err := utils.ParseEmailVerificationInfo(code)
+	if err != nil {
+		returnErrorPage(c)
+		return
+	}
+
+	// 注册用户
+	_, _, _, err = model.CreateNewUser(GetDB(c), username, password)
+	if err != nil {
+		returnErrorPage(c)
+		return
+	}
+
+	// 注册成功，返回成功页面
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(`
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>注册成功</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    background-color: #f4f4f4;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                }
+                .container {
+                    background-color: #fff;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                    text-align: center;
+                }
+                h1 {
+                    color: #5cb85c;
+                }
+                p {
+                    color: #333;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>注册成功</h1>
+                <p>恭喜您，注册成功！</p>
+            </div>
+        </body>
+        </html>
+    `))
+}
+
+// c.Data 可以用来直接返回原始字节数据，而不是使用 Gin 中的 c.JSON、c.String 等方法。它特别适合于返回 非结构化数据，例如 HTML 页面、文本或文件。
+func returnErrorPage(c *gin.Context) {
+	c.Data(http.StatusInternalServerError, "text/html; charset=utf-8", []byte(`
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>注册失败</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    background-color: #f4f4f4;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                }
+                .container {
+                    background-color: #fff;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                    text-align: center;
+                }
+                h1 {
+                    color: #d9534f;
+                }
+                p {
+                    color: #333;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>注册失败</h1>
+                <p>请重试。</p>
+            </div>
+        </body>
+        </html>
+    `))
 }
