@@ -1,7 +1,10 @@
 package handle
 
 import (
+	"errors"
 	"gin-blog-server/internal/global"
+	"gin-blog-server/internal/model"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -76,4 +79,38 @@ func GetDB(c *gin.Context) *gorm.DB {
 // GetRDB 获取 *redis.Client
 func GetRDB(c *gin.Context) *redis.Client {
 	return c.MustGet(global.CTX_RDB).(*redis.Client)
+}
+
+// CurrentUserAuth
+/*
+获取当前登录用户信息
+1. 能从 gin Context 上获取到 user 对象, 说明本次请求链路中获取过了
+2. 从 session 中获取到 uid
+3. 根据 uid 获取用户信息, 并设置到 gin Context 上
+*/
+func CurrentUserAuth(c *gin.Context) (*model.UserAuth, error) {
+	key := global.CTX_USER_AUTH
+
+	// 1
+	if cache, exist := c.Get(key); exist && cache != nil {
+		slog.Debug("[Func-CurrentUserAuth] get from cache: " + cache.(*model.UserAuth).Username)
+		return cache.(*model.UserAuth), nil
+	}
+
+	// 2
+	session := sessions.Default(c)
+	id := session.Get(key)
+	if id == nil {
+		return nil, errors.New("session 中没有 user_auth_id")
+	}
+
+	//3
+	db := GetDB(c)
+	user, err := model.GetUserAuthInfoById(db, id.(int))
+	if err != nil {
+		return nil, err
+	}
+
+	c.Set(key, user)
+	return user, nil
 }

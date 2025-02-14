@@ -1,4 +1,4 @@
-# 第十三章 gin-blog-server 通用接口
+# 第十三章 gin-blog-server 注册-邮箱验证-登陆
 
 ## 13.1 概述
 
@@ -10,7 +10,7 @@
 - **配置相关**：`/config`（获取和更新）
 - **辅助功能**：`/report`, `/email`, `/verify`
 
-**详细接口功能分为：**
+**本章详细接口功能分为：**
 
 1. **登录接口** (`POST /api/login`):
    - **描述**：该接口用于用户登录。通常，用户提供用户名和密码，后端验证后会生成一个认证令牌（如 JWT），并返回给客户端。
@@ -18,21 +18,12 @@
 2. **注册接口** (`POST /api/register`):
    - **描述**：该接口用于新用户注册。用户提供注册信息（如用户名、密码、邮箱等），后端进行验证和存储。
    - **操作**：新用户提交注册请求，后端进行必要的检查（如用户名是否已存在）并注册用户。
-3. **退出登录接口** (`GET /api/logout`):
-   - **描述**：该接口用于用户退出登录。通常，服务器会使该用户的会话或认证令牌失效。
-   - **操作**：用户请求退出，后端会清除用户的会话或认证信息，并返回退出状态。
-4. **上报信息接口** (`POST /api/report`):
-   - **描述**：该接口用于上报信息，可能用于记录某些用户行为或数据。
-   - **操作**：客户端提交一些数据或信息，后端记录、处理或存储这些信息。
-5. **获取配置接口** (`GET /api/config`):
-   - **描述**：该接口用于获取系统或应用的配置信息。
-   - **操作**：客户端请求配置，后端返回相关配置信息，通常是 JSON 格式的数据。
-6. **更新配置接口** (`PATCH /api/config`):
-   - **描述**：该接口用于更新配置。与获取配置接口不同，这个接口需要用户权限来修改配置。
-   - **操作**：客户端提交新的配置信息，后端会根据请求更新配置项。
-7. **邮箱验证接口** (`GET /api/email/verify`):
+3. **邮箱验证接口** (`GET /api/email/verify`):
    - **描述**：该接口用于发送邮箱验证码或验证邮箱地址。常用于注册、找回密码等流程中验证用户身份。
    - **操作**：客户端请求发送验证邮件，后端会根据用户提供的邮箱发送验证码或验证邮件。
+4. **退出登录接口** (`GET /api/logout`):
+   - **描述**：该接口用于用户退出登录。通常，服务器会使该用户的会话或认证令牌失效。
+   - **操作**：用户请求退出，后端会清除用户的会话或认证信息，并返回退出状态。
 
 
 
@@ -322,7 +313,83 @@ func TestParseTokenError(t *testing.T) {
 
 
 
-### 13.2.4 核心逻辑
+### 13.2.4 MiddleWare - WithCookieStore 重要作用
+
+**详细分析查看：**
+
++ **https://juejin.cn/post/7133758754818326564**
++ **https://www.yangyanxing.com/article/use-go-gin-cookie-session.html**
+
+`WithCookieStore` 函数的作用是为 **Gin** 应用配置一个基于 **Cookie** 的会话存储，并通过该存储来管理会话数据（例如 token）。具体来说，它创建了一个中间件，用于处理和存储会话相关的数据。下面是详细解释：
+
+```go
+func WithCookieStore(name, secret string) gin.HandlerFunc {
+	// 创建一个新的 Cookie 存储实例，使用传入的密钥（secret）进行加密。
+	store := cookie.NewStore([]byte(secret))
+
+	// 设置 Cookie 存储的选项
+	store.Options(sessions.Options{
+		Path:   "/", // 指定 Cookie 的有效路径，"/" 表示整个网站都有效
+		MaxAge: 600, // 设置 Cookie 的最大有效期，单位是秒（这里是 600秒，即10分钟）
+	})
+
+	// 返回一个 Gin 中间件，使用 sessions.Sessions 方法将会话存储配置应用到 Gin 路由中。
+	// `name` 是会话的名称，`store` 是用于存储会话数据的 Cookie 存储实例。
+	return sessions.Sessions(name, store)
+}
+```
+
+**主要工作原理：**
+
+1. **创建 Cookie 存储实例**：
+   - `cookie.NewStore([]byte(secret))`：这个函数创建了一个用于存储会话数据的 `store`，并且使用传入的 `secret`（密钥）对会话数据进行加密。密钥用于保护会话数据的安全，防止客户端篡改。
+2. **配置 Cookie 存储选项**：
+   - store.Options(sessions.Options{ ... })：设置了 cookie 的一些选项。
+     - `Path: "/"`：表示该 cookie 对整个网站有效，也就是说，所有路径下的请求都会携带这个 cookie。
+     - `MaxAge: 600`：设置 cookie 的有效期为 600 秒，即 10 分钟。过期后，浏览器会自动删除该 cookie。
+3. **创建 Gin 中间件**：
+   - sessions.Sessions(name, store)：通过 sessions.Sessions 创建一个 Gin 中间件，这个中间件将会处理会话的存储、获取、更新等操作。
+     - `name`：会话的名称（在浏览器的 cookie 中，cookie 名称会是这个 `name`）。
+     - `store`：存储会话数据的 Cookie 存储实例。
+
+**为什么会使浏览器保存 token？**
+
+1. **保存会话信息**： 当用户通过 API 登录或认证时，通常会生成一个 token（比如 JWT token），并将其存储在服务器端（或者在此情况下通过 Cookie 存储）。当使用 `sessions.Sessions` 中间件时，它会自动处理会话数据存储。
+
+2. **设置 Cookie**：
+
+   - 当你调用 `sessions.Default(c)` 后，它会返回一个默认的会话实例，你可以用它来设置会话数据（例如 token）。
+
+   - 假设你在用户成功登录时这样操作：
+
+     ```go
+     session := sessions.Default(c)
+     session.Set("token", token) // 将 token 存储在会话中
+     session.Save() // 将会话数据保存在 Session 中
+     ```
+
+     这时，Gin 会将 token存储在 cookie 中，并将它发送到客户端浏览器。浏览器收到这个 Set-Cookie响应头后，就会把 token 存储在浏览器的 cookie 存储中。
+
+3. **后续请求携带 Token**：
+
+   - 之后的每个请求，浏览器都会自动将这个 cookie（包含 token）添加到请求头中，作为 Cookie 字段发送给服务器。例如：Cookie: token=<your_token>
+   - 服务器在接收到请求后，可以通过 `sessions.Default(c)` 来提取 cookie 中的 token。
+
+**关键点总结：**
+
+- `WithCookieStore` 通过创建一个 **基于 Cookie 的会话存储**，将用户的会话数据（例如 token）存储到浏览器的 cookie 中。
+- 浏览器自动保存该 cookie，并在后续请求中自动携带。
+- 这样，服务器每次接收到请求时，可以通过读取该 cookie 来获取 token，从而进行身份验证。
+
+**流程概述：**
+
+1. 用户成功登录，服务器生成 token 并通过 `session.Set` 保存到 Cookie。
+2. 浏览器接收到响应后自动保存 token（cookie）。
+3. 后续请求中，浏览器自动携带 token，服务器通过 cookie 提取 token 进行身份验证。
+
+
+
+### 13.2.5 核心逻辑
 
 **首先需要更新 internal/model/z_base.go:11 中的  MakeMigrate 以自动创建对应的数据库表：**
 
@@ -552,7 +619,34 @@ func (*UserAuth) Login(c *gin.Context) {
 
 ![image-20250213142653005](./assets/image-20250213142653005.png)
 
+![image-20250214163937010](./assets/image-20250214163937010.png)
 
+登陆成功之后，会携带 jwt token 返回，并由浏览器进行设置：这是由于中间件设置了如下内容
+
+```go
+// WithCookieStore 基于 Cookie 的 Session 中间件，用于在 Gin 框架中创建基于 Cookie 存储的会话管理。
+// name: 会话名称，用于标识和存储会话。
+// secret: 用于加密 Cookie 的密钥，保证 Cookie 的安全性。
+func WithCookieStore(name, secret string) gin.HandlerFunc {
+	// 创建一个新的 Cookie 存储实例，使用传入的密钥（secret）进行加密。
+	store := cookie.NewStore([]byte(secret))
+
+	// 设置 Cookie 存储的选项
+	store.Options(sessions.Options{
+		Path:   "/", // 指定 Cookie 的有效路径，"/" 表示整个网站都有效
+		MaxAge: 600, // 设置 Cookie 的最大有效期，单位是秒（这里是 600秒，即10分钟）
+	})
+
+	// 返回一个 Gin 中间件，使用 sessions.Sessions 方法将会话存储配置应用到 Gin 路由中。
+	// `name` 是会话的名称，`store` 是用于存储会话数据的 Cookie 存储实例。
+	return sessions.Sessions(name, store)
+}
+```
+
+**注意：**
+
++ **cookie 的有效期设置为 600s**
++ **jwt token 的有效期设置为 24 h**
 
 
 
@@ -657,25 +751,7 @@ Email:
 
 
 
-
-
-## 13.4 退出登录 - logout
-
-
-
-## 13.5 上报信息 - report
-
-
-
-## 13.6 获取配置 - config - get
-
-
-
-## 13.7 更新配置 - config - patch
-
-
-
-## 13.8 邮箱验证 - email/verify
+## 13.4 邮箱验证 - email/verify
 
 ![image-20250214161946295](./assets/image-20250214161946295.png)
 
@@ -847,3 +923,156 @@ func returnErrorPage(c *gin.Context) {
 但是，由于还没有实现 info 接口，所以登陆还不能够完全登陆。下面的info接口会携带着 jwt token 去进行后端请求
 
 ![image-20250214164125342](./assets/image-20250214164125342.png)
+
+session 配置在 config.yml 中：
+
+```
+Session:
+  Name: "mysession"
+  Salt: "salt"
+  MaxAge: 600 # second
+```
+
+
+
+
+
+## 13.5 退出登录 - logout
+
+### 13.5.1 gin.Context - get 
+
+`c.Get` 在 `*gin.Context` 中是 **线程安全的**，但它并不意味着会被多个请求复用。
+
+**解释 `c.Get` 的作用：**
+
+在 Gin 中，`*gin.Context` 代表的是当前请求的上下文（context），它用于存储请求的元数据、请求参数、路由匹配信息以及中间件中设置的各种数据。
+
+- `c.Get` 用于从当前请求上下文中获取已设置的值。它通常在中间件或路由处理函数中使用，以便在整个请求生命周期内共享数据。
+
+```go
+value, exists := c.Get("key")
+```
+
+- `c.Get` 会尝试从 `Context` 中获取与 `"key"` 相关的值，如果存在，它会返回该值，并且 `exists` 为 `true`；如果不存在，`exists` 为 `false`。
+
+**关键点：**
+
+1. **每个请求的 gin.Context 是独立的**：
+   - 在 Gin 中，`*gin.Context` 是和每一个请求一一对应的。它是**特定于请求的**，在请求生命周期内是**局部的**。因此，一个请求的 `*gin.Context` 是不会与其他请求共享的。
+   - 在每个请求开始时，Gin 会为每个请求创建一个新的 `*gin.Context` 实例。处理完请求后，该 `*gin.Context` 会被销毁。
+2. **不会跨请求复用**：
+   - 你可以在一个请求的处理中调用 `c.Set` 来设置一些数据（例如 `c.Set("key", value)`），并在该请求的后续处理中使用 `c.Get` 来访问这些数据。
+   - 但这些数据只对当前请求有效。每个请求有独立的 `*gin.Context`，所以 `c.Get` 只会在当前请求的上下文中查找数据。
+   - **不同的请求是不会复用同一个 `*gin.Context` 的**。这就意味着，一个请求中 `c.Set` 设置的数据不会影响到其他请求的上下文数据。
+3. **`*gin.Context` 与请求生命周期**：
+   - `c.Get` 和 `c.Set` 是在同一请求的生命周期内有效的。一个请求的 `*gin.Context` 会在请求开始时创建，在请求结束时销毁。多个并发请求会有独立的上下文实例，它们之间不会共享任何数据。
+
+**举个例子：**
+
+```go
+r.GET("/test", func(c *gin.Context) {
+    c.Set("user", "John") // 为当前请求设置数据
+
+    // 获取当前请求中的数据
+    user, exists := c.Get("user")
+    if exists {
+        fmt.Println(user)  // 输出: John
+    }
+})
+```
+
+- 这个 `c.Set("user", "John")` 和 `c.Get("user")` 只会对当前请求有效。
+- 不同的请求会有独立的 `*gin.Context`，所以另一个请求的处理函数中 `c.Get("user")` 会返回 `false`，因为该请求上下文中并没有设置 `"user"`。
+
+**总结：**
+
+- **`*gin.Context` 是每个请求独立的，不同请求之间不会复用同一个 `*gin.Context` 实例。**
+- **`c.Get` 只能在当前请求的生命周期内获取设置的数据，不会跨请求复用。**
+
+
+
+### 13.5.2 internal/handle/base.go - CurrentUserAuth
+
+获取当前登录用户信息
+1. 能从 gin Context 上获取到 user 对象, 说明本次请求链路中获取过了
+2. 从 session 中获取到 uid
+3. 根据 uid 获取用户信息, 并设置到 gin Context 上
+
+internal/handle/base.go
+
+```go
+// CurrentUserAuth
+/*
+获取当前登录用户信息
+1. 能从 gin Context 上获取到 user 对象, 说明本次请求链路中获取过了
+2. 从 session 中获取到 uid
+3. 根据 uid 获取用户信息, 并设置到 gin Context 上
+*/
+func CurrentUserAuth(c *gin.Context) (*model.UserAuth, error) {
+	key := global.CTX_USER_AUTH
+
+	// 1
+	if cache, exist := c.Get(key); exist && cache != nil {
+		slog.Debug("[Func-CurrentUserAuth] get from cache: " + cache.(*model.UserAuth).Username)
+		return cache.(*model.UserAuth), nil
+	}
+
+	// 2
+	session := sessions.Default(c)
+	id := session.Get(key)
+	if id == nil {
+		return nil, errors.New("session 中没有 user_auth_id")
+	}
+
+	//3
+	db := GetDB(c)
+	user, err := model.GetUserAuthInfoById(db, id.(int))
+	if err != nil {
+		return nil, err
+	}
+
+	c.Set(key, user)
+	return user, nil
+}
+```
+
+
+
+### 13.5.3 internal/handle/handle_auth.go - Logout
+
+**TODO: 这里结束登陆之后，并没有将 JWT TOKEN 失效，JWT TOKEN 仍可以用来作为有效请求**
+
+internal/handle/handle_auth.go
+
+```go
+// Logout 退出登录
+// @Summary 退出登录
+// @Description 退出登录
+// @Tags UserAuth
+// @Accept json
+// @Produce json
+// @Success 0 {object} string
+// @Router /logout [get]
+func (*UserAuth) Logout(c *gin.Context) {
+	// 防止其他请求设置干扰
+	c.Set(global.CTX_USER_AUTH, nil)
+
+	// 已经退出登录
+	auth, _ := CurrentUserAuth(c)
+	if auth == nil {
+		ReturnSuccess(c, nil)
+		return
+	}
+
+	session := sessions.Default(c)
+	session.Delete(global.CTX_USER_AUTH)
+	session.Save()
+
+	// 删除 Redis 中的在线状态
+	rdb := GetRDB(c)
+	onlineKey := global.ONLINE_USER + strconv.Itoa(auth.ID)
+	rdb.Del(rctx, onlineKey)
+	ReturnSuccess(c, nil)
+}
+```
+

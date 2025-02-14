@@ -35,4 +35,5 @@ func registerBaseHandler(r *gin.Engine) {
 	base.POST("/login", userAuthAPI.Login)            // 登录
 	base.POST("/register", userAuthAPI.Register)      // 注册
 	base.GET("/email/verify", userAuthAPI.VerifyCode) // 邮箱验证
+	base.GET("/logout", userAuthAPI.Logout)           // 退出登录
 }

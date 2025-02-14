@@ -173,7 +173,7 @@ func (*UserAuth) Login(c *gin.Context) {
 // @Param form body RegisterReq true "注册"
 // @Accept json
 // @Produce json
-// @Success 0 {object} Response[] "返回空数组"
+// @Success 0 {object} string
 // @Router /register [post]
 func (*UserAuth) Register(c *gin.Context) {
 	var req RegisterReq
@@ -347,4 +347,34 @@ func returnErrorPage(c *gin.Context) {
         </body>
         </html>
     `))
+}
+
+// Logout 退出登录
+// @Summary 退出登录
+// @Description 退出登录
+// @Tags UserAuth
+// @Accept json
+// @Produce json
+// @Success 0 {object} string
+// @Router /logout [get]
+func (*UserAuth) Logout(c *gin.Context) {
+	// 防止其他请求设置干扰
+	c.Set(global.CTX_USER_AUTH, nil)
+
+	// 已经退出登录
+	auth, _ := CurrentUserAuth(c)
+	if auth == nil {
+		ReturnSuccess(c, nil)
+		return
+	}
+
+	session := sessions.Default(c)
+	session.Delete(global.CTX_USER_AUTH)
+	session.Save()
+
+	// 删除 Redis 中的在线状态
+	rdb := GetRDB(c)
+	onlineKey := global.ONLINE_USER + strconv.Itoa(auth.ID)
+	rdb.Del(rctx, onlineKey)
+	ReturnSuccess(c, nil)
 }

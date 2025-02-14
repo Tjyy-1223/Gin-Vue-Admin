@@ -116,6 +116,23 @@ func GetRoleIdsByUserId(db *gorm.DB, userAuthId int) (ids []int, err error) {
 	return ids, result.Error
 }
 
+// GetUserAuthInfoById 通过 id 获取对应的 UserAuth
+func GetUserAuthInfoById(db *gorm.DB, id int) (*UserAuth, error) {
+	var userAuth = UserAuth{
+		Model: Model{ID: id},
+	}
+	// 查询 userAuth 表中的第一条记录，并且通过 Preload 预加载关联的 Roles 和 UserInfo 数据
+	result := db.Model(&userAuth).
+		// Preload("Roles") 会将 userAuth 关联的 Roles 数据一并查询出来
+		Preload("Roles").
+		// Preload("UserInfo") 会将 userAuth 关联的 UserInfo 数据一并查询出来
+		Preload("UserInfo").
+		// First(&userAuth) 查询 userAuth 表中第一条符合条件的记录，并将结果存入 userAuth 变量
+		First(&userAuth)
+
+	return &userAuth, result.Error
+}
+
 // CreateNewUser 传入用户名和密码注册新用户
 func CreateNewUser(db *gorm.DB, username, password string) (*UserAuth, *UserInfo, *UserAuthRole, error) {
 	// 创建 userinfo
