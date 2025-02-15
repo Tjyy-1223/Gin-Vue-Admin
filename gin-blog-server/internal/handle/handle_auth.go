@@ -350,6 +350,7 @@ func returnErrorPage(c *gin.Context) {
 }
 
 // Logout 退出登录
+// TODO：退出登录之后，应该将 jwt Token 失效就可以，session 的操作有些多余
 // @Summary 退出登录
 // @Description 退出登录
 // @Tags UserAuth

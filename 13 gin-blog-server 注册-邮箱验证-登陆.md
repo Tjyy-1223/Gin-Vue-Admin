@@ -1076,3 +1076,31 @@ func (*UserAuth) Logout(c *gin.Context) {
 }
 ```
 
+
+
+### 13.6 什么时候添加 jwt token
+
+ **`requestSuccess` 函数的作用是：在请求发送之前检查是否需要添加 `token`，并根据需要自动将 `token` 附加到请求头的 `Authorization` 字段中。**
+
+**如果 `token` 不存在，并且请求需要 `token`（`needToken: true`），则拒绝请求并返回相应的错误提示。**
+
+**该拦截器的作用是保护那些需要身份验证的 API 请求，确保请求中携带有效的身份验证信息。**
+
+```javascript
+/**
+ * 请求成功拦截
+ * @param {import('axios').InternalAxiosRequestConfig} config
+ */
+function requestSuccess(config: any) {
+    if (config.needToken) {
+        const { token } = useUserStore()
+        if (!token) {
+            return Promise.reject(new axios.AxiosError('当前没有登录，请先登录！', '401'))
+        }
+        // 如果 config.headers.Authorization 已经有值（即该字段已经被设置），则 不做任何更改。
+        config.headers.Authorization = config.headers.Authorization || `Bearer ${token}`
+    }
+    return config
+}
+```
+

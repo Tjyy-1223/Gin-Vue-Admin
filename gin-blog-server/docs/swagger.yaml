@@ -44,6 +44,29 @@ definitions:
         description: 用户的个人网站链接，最大长度255字符，用于存储用户的官网、博客等链接
         type: string
     type: object
+  handle.RegisterReq:
+    properties:
+      email:
+        type: string
+      password:
+        maxLength: 20
+        minLength: 4
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  handle.Response-any:
+    properties:
+      code:
+        description: 业务状态码
+        type: integer
+      data:
+        description: 响应数据
+      message:
+        description: 响应消息
+        type: string
+    type: object
   handle.Response-handle_LoginVO:
     properties:
       code:
@@ -57,9 +80,71 @@ definitions:
         description: 响应消息
         type: string
     type: object
+  handle.Response-map_string_string:
+    properties:
+      code:
+        description: 业务状态码
+        type: integer
+      data:
+        allOf:
+        - $ref: '#/definitions/map_string_string'
+        description: 响应数据
+      message:
+        description: 响应消息
+        type: string
+    type: object
+  map_string_string:
+    additionalProperties:
+      type: string
+    type: object
 info:
   contact: {}
 paths:
+  /config:
+    get:
+      consumes:
+      - application/json
+      description: 获取配置信息
+      parameters:
+      - description: 配置信息
+        in: body
+        name: data
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "0":
+          description: ""
+          schema:
+            $ref: '#/definitions/handle.Response-map_string_string'
+      summary: 获取配置信息
+      tags:
+      - blog_info
+    patch:
+      consumes:
+      - application/json
+      description: 更新配置信息
+      parameters:
+      - description: 更新配置信息
+        in: body
+        name: data
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "0":
+          description: ""
+          schema:
+            $ref: '#/definitions/handle.Response-any'
+      summary: 更新配置信息
+      tags:
+      - blog_info
   /login:
     post:
       consumes:
@@ -82,4 +167,63 @@ paths:
       summary: 登录
       tags:
       - UserAuth
+  /logout:
+    get:
+      consumes:
+      - application/json
+      description: 退出登录
+      produces:
+      - application/json
+      responses:
+        "0":
+          description: ""
+          schema:
+            type: string
+      summary: 退出登录
+      tags:
+      - UserAuth
+  /register:
+    post:
+      consumes:
+      - application/json
+      description: 注册
+      parameters:
+      - description: 注册
+        in: body
+        name: form
+        required: true
+        schema:
+          $ref: '#/definitions/handle.RegisterReq'
+      produces:
+      - application/json
+      responses:
+        "0":
+          description: ""
+          schema:
+            type: string
+      summary: 注册
+      tags:
+      - UserAuth
+  /report:
+    post:
+      consumes:
+      - application/json
+      description: 用户登进后台时上报信息
+      parameters:
+      - description: 用户信息
+        in: body
+        name: data
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "0":
+          description: ""
+          schema:
+            $ref: '#/definitions/handle.Response-any'
+      summary: 上报用户信息
+      tags:
+      - blog_info
 swagger: "2.0"

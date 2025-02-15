@@ -11,6 +11,7 @@ import (
 var (
 	// 后端管理系统接口
 	userAuthAPI handle.UserAuth // 用户账号
+	blogInfoAPI handle.BlogInfo // 博客设置
 )
 
 func RegisterHandlers(r *gin.Engine) {
@@ -36,4 +37,8 @@ func registerBaseHandler(r *gin.Engine) {
 	base.POST("/register", userAuthAPI.Register)      // 注册
 	base.GET("/email/verify", userAuthAPI.VerifyCode) // 邮箱验证
 	base.GET("/logout", userAuthAPI.Logout)           // 退出登录
+	base.POST("/report", blogInfoAPI.Report)          // 上报信息
+	base.GET("/config", blogInfoAPI.GetConfigMap)     // 获取配置
+	base.PATCH("/config", blogInfoAPI.UpdateConfig)   // 更新配置
+
 }
