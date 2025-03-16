@@ -352,44 +352,66 @@ func WithCookieStore(name, secret string) gin.HandlerFunc {
      - `name`：会话的名称（在浏览器的 cookie 中，cookie 名称会是这个 `name`）。
      - `store`：存储会话数据的 Cookie 存储实例。
 
-**为什么会使浏览器保存 token？**
+**什么时候将 session 携带在 cookie 时， 这里是登陆过程中 session.save 起的作用**
 
-1. **保存会话信息**： 当用户通过 API 登录或认证时，通常会生成一个 token（比如 JWT token），并将其存储在服务器端（或者在此情况下通过 Cookie 存储）。当使用 `sessions.Sessions` 中间件时，它会自动处理会话数据存储。
+internal/handle/handle_auth.go:50 Login 函数
 
-2. **设置 Cookie**：
-
-   - 当你调用 `sessions.Default(c)` 后，它会返回一个默认的会话实例，你可以用它来设置会话数据（例如 token）。
-
-   - 假设你在用户成功登录时这样操作：
-
-     ```go
-     session := sessions.Default(c)
-     session.Set("token", token) // 将 token 存储在会话中
-     session.Save() // 将会话数据保存在 Session 中
-     ```
-
-     这时，Gin 会将 token存储在 cookie 中，并将它发送到客户端浏览器。浏览器收到这个 Set-Cookie响应头后，就会把 token 存储在浏览器的 cookie 存储中。
-
-3. **后续请求携带 Token**：
-
-   - 之后的每个请求，浏览器都会自动将这个 cookie（包含 token）添加到请求头中，作为 Cookie 字段发送给服务器。例如：Cookie: token=<your_token>
-   - 服务器在接收到请求后，可以通过 `sessions.Default(c)` 来提取 cookie 中的 token。
-
-**关键点总结：**
-
-- `WithCookieStore` 通过创建一个 **基于 Cookie 的会话存储**，将用户的会话数据（例如 token）存储到浏览器的 cookie 中。
-- 浏览器自动保存该 cookie，并在后续请求中自动携带。
-- 这样，服务器每次接收到请求时，可以通过读取该 cookie 来获取 token，从而进行身份验证。
-
-**流程概述：**
-
-1. 用户成功登录，服务器生成 token 并通过 `session.Set` 保存到 Cookie。
-2. 浏览器接收到响应后自动保存 token（cookie）。
-3. 后续请求中，浏览器自动携带 token，服务器通过 cookie 提取 token 进行身份验证。
+```go
+// 使用 Gin 的 session 来存储用户的认证信息（UserAuth ID）
+session := sessions.Default(c)
+session.Set(global.CTX_USER_AUTH, userAuth.ID)
+session.Save() // 保存 session
+```
 
 
 
-### 13.2.5 核心逻辑
+### 13.2.5 Token 什么时候添加的
+
+1. **保存会话信息**： 当用户通过 API 登录或认证时，通常会生成一个 token（比如 JWT token）, 所以登陆成功的后端响应中会有 token 字段
+
+2. 前端代码接收到响应时，会执行保存 token 的操作，如下： **对于登陆完成的响应进行处理：**设置 token
+
+   ```javascript
+   const doLogin = async (username, password) => {
+       const resp = await api.login({username, password})
+       window.$notify?.success('登录成功!')
+       // 设置 token
+       userStore.setToken(resp.data.token)
+       // 加载用户信息, 更新 pinia 中信息, 刷新页面
+       await userStore.getUserInfo()
+       // 清空表单
+       form.value = { username: 'test@qq.com', password: '11111' }
+       loginFlag.value = false
+   }
+   ```
+
+3. **向后端发送其他请求时：** `requestSuccess` 函数的作用是：在请求发送之前检查是否需要添加 `token`，并根据需要自动将 `token` 附加到请求头的 `Authorization` 字段中。
+
+   + 如果 `token` 不存在，并且请求需要 `token`（`needToken: true`），则拒绝请求并返回相应的错误提示。
+
+   + 该拦截器的作用是保护那些需要身份验证的 API 请求，确保请求中携带有效的身份验证信息。
+
+   ```javascript
+   /**
+    * 请求成功拦截
+    * @param {import('axios').InternalAxiosRequestConfig} config
+    */
+   function requestSuccess(config: any) {
+       if (config.needToken) {
+           const { token } = useUserStore()
+           if (!token) {
+               return Promise.reject(new axios.AxiosError('当前没有登录，请先登录！', '401'))
+           }
+           // 如果 config.headers.Authorization 已经有值（即该字段已经被设置），则 不做任何更改。
+           config.headers.Authorization = config.headers.Authorization || `Bearer ${token}`
+       }
+       return config
+   }
+   ```
+
+
+
+### 13.2.6 核心逻辑
 
 **首先需要更新 internal/model/z_base.go:11 中的  MakeMigrate 以自动创建对应的数据库表：**
 
@@ -922,7 +944,7 @@ func returnErrorPage(c *gin.Context) {
 
 但是，由于还没有实现 info 接口，所以登陆还不能够完全登陆。下面的info接口会携带着 jwt token 去进行后端请求
 
-![image-20250214164125342](./assets/image-20250214164125342.png)
+![image-20250315142027231](./assets/image-20250315142027231.png)
 
 session 配置在 config.yml 中：
 
@@ -1073,34 +1095,6 @@ func (*UserAuth) Logout(c *gin.Context) {
 	onlineKey := global.ONLINE_USER + strconv.Itoa(auth.ID)
 	rdb.Del(rctx, onlineKey)
 	ReturnSuccess(c, nil)
-}
-```
-
-
-
-### 13.6 什么时候添加 jwt token
-
- **`requestSuccess` 函数的作用是：在请求发送之前检查是否需要添加 `token`，并根据需要自动将 `token` 附加到请求头的 `Authorization` 字段中。**
-
-**如果 `token` 不存在，并且请求需要 `token`（`needToken: true`），则拒绝请求并返回相应的错误提示。**
-
-**该拦截器的作用是保护那些需要身份验证的 API 请求，确保请求中携带有效的身份验证信息。**
-
-```javascript
-/**
- * 请求成功拦截
- * @param {import('axios').InternalAxiosRequestConfig} config
- */
-function requestSuccess(config: any) {
-    if (config.needToken) {
-        const { token } = useUserStore()
-        if (!token) {
-            return Promise.reject(new axios.AxiosError('当前没有登录，请先登录！', '401'))
-        }
-        // 如果 config.headers.Authorization 已经有值（即该字段已经被设置），则 不做任何更改。
-        config.headers.Authorization = config.headers.Authorization || `Bearer ${token}`
-    }
-    return config
 }
 ```
 

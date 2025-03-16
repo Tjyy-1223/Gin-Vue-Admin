@@ -3,6 +3,7 @@ package ginblog
 import (
 	"gin-blog-server/docs"
 	"gin-blog-server/internal/handle"
+	"gin-blog-server/internal/middleware"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -40,5 +41,31 @@ func registerBaseHandler(r *gin.Engine) {
 	base.POST("/report", blogInfoAPI.Report)          // 上报信息
 	base.GET("/config", blogInfoAPI.GetConfigMap)     // 获取配置
 	base.PATCH("/config", blogInfoAPI.UpdateConfig)   // 更新配置
+}
 
+// 后台管理系统的接口: 全部需要 登录 + 鉴权
+func registerAdminHandler(r *gin.Engine) {
+	auth := r.Group("/api")
+
+	// 注意使用中间件的顺序
+	auth.Use(middleware.JWTAuth())
+	auth.Use(middleware.PermissionCheck())
+	auth.Use(middleware.OperationLog())
+	auth.Use(middleware.ListenOnline())
+
+	// 博客设置
+	setting := auth.Group("/setting")
+	{
+		setting.GET("/about", blogInfoAPI.GetAbout)    // 获取关于我
+		setting.PUT("/about", blogInfoAPI.UpdateAbout) // 编辑关于我
+	}
+}
+
+// 博客前台相关接口：大部分不需要登陆，部分需要登陆
+func registerBlogHandler(r *gin.Engine) {
+	base := r.Group("/api/front")
+
+	base.GET("/about", blogInfoAPI.GetAbout) // 获取关于我
+	//base.GET("/home", frontAPI.getHomeInfo)  // 前台首页
+	//base.GET("/page", pageAPI.GetList)  // 前台页面
 }

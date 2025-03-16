@@ -26,3 +26,9 @@ const (
 	CTX_RDB       = "_rdb_field"
 	CTX_USER_AUTH = "_user_auth_field"
 )
+
+// Config Key
+
+const (
+	CONFIG_ABOUT = "about"
+)

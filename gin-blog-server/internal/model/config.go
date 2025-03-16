@@ -64,3 +64,27 @@ func CheckConfigMap(db *gorm.DB, m map[string]string) error {
 		return nil
 	})
 }
+
+// GetConfig 获取 key 对应的配置信息
+func GetConfig(db *gorm.DB, key string) string {
+	var config Config
+	result := db.Where("key", key).First(&config)
+	if result.Error != nil {
+		return ""
+	}
+	return config.Value
+}
+
+// CheckConfig 更新 Config
+func CheckConfig(db *gorm.DB, key, value string) error {
+	var config Config
+	result := db.Where("key", key).FirstOrCreate(&config)
+	if result.Error != nil {
+		return result.Error
+	}
+
+	config.Value = value
+	result = db.Save(&config)
+
+	return result.Error
+}

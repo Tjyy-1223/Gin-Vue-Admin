@@ -12,6 +12,10 @@ import (
 
 type BlogInfo struct{}
 
+type AboutReq struct {
+	Content string `json:"content"`
+}
+
 // Report 上报用户信息，进行相应的统计操作
 // @Summary 上报用户信息
 // @Description 用户登进后台时上报信息
@@ -124,4 +128,39 @@ func (*BlogInfo) UpdateConfig(c *gin.Context) {
 	}
 
 	ReturnSuccess(c, nil)
+}
+
+// GetAbout 获取 About 信息
+// @Summary 获取关于
+// @Description 获取关于
+// @Tags blog_info
+// @Produce json
+// @Success 0 {object} Response[string]
+// @Router /about [get]
+func (*BlogInfo) GetAbout(c *gin.Context) {
+	ReturnSuccess(c, model.GetConfig(GetDB(c), global.CONFIG_ABOUT))
+}
+
+// UpdateAbout 更新 About 信息
+// @Summary 更新关于
+// @Description 更新关于
+// @Tags blog_info
+// @Accept json
+// @Produce json
+// @Param data body object true "关于"
+// @Success 0 {object} Response[string]
+// @Router /about [put]
+func (*BlogInfo) UpdateAbout(c *gin.Context) {
+	var req AboutReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	err := model.CheckConfig(GetDB(c), global.CONFIG_ABOUT, req.Content)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, req.Content)
 }

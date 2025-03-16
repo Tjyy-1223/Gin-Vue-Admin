@@ -17,7 +17,8 @@ func MakeMigrate(db *gorm.DB) error {
 	db.SetupJoinTable(&Role{}, "Users", &UserAuthRole{})
 
 	return db.AutoMigrate(
-		&Config{}, // 网站设置
+		&Config{},       // 网站设置
+		&OperationLog{}, // 操作日志
 
 		&UserAuth{},     // 用户验证
 		&Role{},         // 角色
@@ -45,4 +46,23 @@ func Count[T any](db *gorm.DB, data *T, where ...any) (int, error) {
 		return 0, result.Error
 	}
 	return int(total), nil
+}
+
+// Paginate 分页函数
+func Paginate(page, size int) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if page <= 0 {
+			page = 1
+		}
+
+		switch {
+		case size > 100:
+			size = 100
+		case size <= 10:
+			size = 10
+		}
+
+		offset := (page - 1) * size
+		return db.Offset(offset).Limit(size)
+	}
 }
