@@ -16,6 +16,12 @@ type UserInfo struct {
 	Website  string `json:"website" gorm:"type:varchar(255)"`                 // 用户的个人网站链接，最大长度255字符，用于存储用户的官网、博客等链接
 }
 
+type UserInfoVO struct {
+	UserInfo
+	ArticleLikeSet []string `json:"article_like_set"`
+	CommentLikeSet []string `json:"comment_like_set"`
+}
+
 // GetUserInfoById 根据用户的 ID 从数据库中查询用户信息
 // 参数:
 //
@@ -64,5 +70,19 @@ func UpdateUserLoginInfo(db *gorm.DB, id int, ipAddress, ipSource string) error 
 		LastLoginTime: &now,
 	}
 	result := db.Where("id", id).Updates(userAuth)
+	return result.Error
+}
+
+// UpdateUserInfo 根据 user-id 更新用户信息
+func UpdateUserInfo(db *gorm.DB, id int, nickname, avatar, intro, website string) error {
+	userInfo := UserInfo{
+		Model:    Model{ID: id},
+		Nickname: nickname,
+		Avatar:   avatar,
+		Intro:    intro,
+		Website:  website,
+	}
+
+	result := db.Select("nickname", "avatar", "intro", "website").Updates(userInfo)
 	return result.Error
 }
