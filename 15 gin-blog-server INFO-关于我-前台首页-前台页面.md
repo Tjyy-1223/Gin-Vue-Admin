@@ -290,62 +290,9 @@ func ListenOnline() gin.HandlerFunc {
 
 
 
-## 2 资源 Resource
+## 2 USER INFO 用户信息
 
-由于在 JWTAuth 中间件中，有如下的步骤：
-
-```go
-// 系统管理的资源需要进行用户鉴权，其他资源不需要鉴权
-url, method := c.FullPath()[4:], c.Request.Method
-resource, err := model.GetResource(db, url, method)
-if err != nil {
-  // 没有找到的资源，不需要鉴权，跳过后续的验证过程
-  if errors.Is(err, gorm.ErrRecordNotFound) {
-    slog.Debug("[middleware-JWTAuth] resource not exist, skip jwt auth")
-    c.Set("skip_check", true)
-    c.Next()
-    c.Set("skip_check", false)
-    return
-  }
-  handle.ReturnError(c, global.ErrDbOp, err)
-  return
-}
-```
-
-即对系统管理的资源进行判定，所以要先完善资源相关的接口
-
-在后端管理的前端代码中，资源管理相关的接口主要有以下几个：
-
-```java
-// 资源
-getResources: (params = {}) => request.get('/resource/list', { params }),
-saveOrUpdateResource: data => request.post('/resource', data),
-deleteResource: id => request.delete(`/resource/${id}`),
-updateResourceAnonymous: data => request.put('/resource/anonymous', data),
-getResourceOption: () => request.get('/resource/option'),
-```
-
-对应的 gin-blog-server 中，资源相关的代码如下：
-
-```go
-// 资源模块
-resource := auth.Group("/resource")
-{
-  resource.GET("/list", resourceAPI.GetTreeList)          // 资源列表(树形)
-  resource.POST("", resourceAPI.SaveOrUpdate)             // 新增/编辑资源
-  resource.DELETE("/:id", resourceAPI.Delete)             // 删除资源
-  resource.PUT("/anonymous", resourceAPI.UpdateAnonymous) // 修改资源匿名访问
-  resource.GET("/option", resourceAPI.GetOption)          // 资源选项列表(树形)
-}
-```
-
-我们接下来一个一个进行完善。
-
-2.1 
-
-
-
-## 3 接口：USER INFO
+由于在登陆前台或者后台之后，要做的第一件事就是通过/user/info 获取当前登陆用户的信息。为了对后续的功能完成正常的开发和功能测试，这里简单补充两个功能：获取用户信息和编辑用户信息。
 
 manager.go
 
@@ -375,9 +322,38 @@ func registerBlogHandler(r *gin.Engine) {
 }
 ```
 
-### 3.1 获取用户信息 GetInfo
+为了正常开发功能，我们先将 auth.go 的这段代码注释掉，即不要对资源进行限制
 
-#### 3.1.1 后端代码
+```go
+// 系统管理的资源需要进行用户鉴权，其他资源不需要鉴权
+		//url, method := c.FullPath()[4:], c.Request.Method
+		//resource, err := model.GetResource(db, url, method)
+		//if err != nil {
+		//	// 没有找到的资源，不需要鉴权，跳过后续的验证过程
+		//	if errors.Is(err, gorm.ErrRecordNotFound) {
+		//		slog.Debug("[middleware-JWTAuth] resource not exist, skip jwt auth")
+		//		c.Set("skip_check", true)
+		//		c.Next()
+		//		c.Set("skip_check", false)
+		//		return
+		//	}
+		//	handle.ReturnError(c, global.ErrDbOp, err)
+		//	return
+		//}
+
+		// 匿名资源，不需要鉴权，跳过后续的验证过程
+		//if resource.Anonymous {
+		//	slog.Debug(fmt.Sprintf("[middleware-JWTAuth] resouce: %s %s is anonymous, skip jwt auth!", url, method))
+		//	c.Set("skip_check", true)
+		//	c.Next()
+		//	c.Set("skip_check", false)
+		//	return
+		//}
+```
+
+### 2.1 获取用户信息 GetInfo
+
+#### 2.1.1 后端代码
 
 这段代码定义了一个名为 `GetInfo` 的方法，它属于 `User` 结构体，其主要作用是根据请求中的 JWT Token 获取用户信息，并将用户信息以及用户点赞的文章和评论集合信息返回给客户端。
 
@@ -417,7 +393,7 @@ func (*User) GetInfo(c *gin.Context) {
 }
 ```
 
-#### 3.1.2 功能测试
+#### 2.1.2 功能测试
 
 /user/info 在前端页面的触发条件：
 
@@ -444,9 +420,9 @@ func (*User) GetInfo(c *gin.Context) {
 
 
 
-### 3.2 更新用户信息 UpdateInfo
+### 2.2 更新用户信息 UpdateInfo
 
-#### 3.2.1 后端代码
+#### 2.2.1 后端代码
 
 这段代码定义了一个名为 `UpdateCurrent` 的方法，它属于 `User` 结构体，其主要作用是更新当前用户的信息。
 
@@ -479,17 +455,21 @@ func (*User) UpdateCurrent(c *gin.Context) {
 
 ```
 
-#### 3.2.2 功能测试
+#### 2.2.2 功能测试
 
-关于编辑用户信息的位置，可以在前台-个人中心页面进行编辑:
+关于编辑用户信息的位置，可以在前台-个人中心页面进行编辑后，点击修改按钮
+
+可以看到发送的请求如下：
+
+<img src="./assets/image-20250317140600913.png" alt="image-20250317140600913" style="zoom:67%;" />
+
+同理，可以看到个人信息被修改成功
 
 
 
 
 
-
-
-## 4 接口：关于我
+## 3 About 关于我
 
 manager.go
 
@@ -514,9 +494,9 @@ func registerBlogHandler(r *gin.Engine) {
 }
 ```
 
-### 4.1 获取关于我 blogInfoAPI.GetAbout
+### 3.1 获取关于我 blogInfoAPI.GetAbout
 
-#### 4.1.1 后端代码
+#### 3.1.1 后端代码
 
 这段代码由两部分组成：
 
@@ -545,7 +525,7 @@ func GetConfig(db *gorm.DB, key string) string {
 }
 ```
 
-#### 4.1.2 功能测试
+#### 3.1.2 功能测试
 
 <img src="./assets/image-20250316124411158.png" alt="image-20250316124411158" style="zoom:50%;" />
 
@@ -563,9 +543,9 @@ func GetConfig(db *gorm.DB, key string) string {
 
 
 
-### 4.2 编辑关于我 blogInfoAPI.UpdateAbout
+### 3.2 编辑关于我 blogInfoAPI.UpdateAbout
 
-#### 4.2.1 后端代码
+#### 3.2.1 后端代码
 
 代码由两部分组成，分别位于 `handle_bloginfo.go` 和 `config.go` 文件中。
 
@@ -609,4 +589,371 @@ func CheckConfig(db *gorm.DB, key, value string) error {
 
 
 
-#### 4.1.2 功能测试
+#### 3.1.2 功能测试
+
+关于 about 的编辑功能，当前无法测试，因为后台接口没搭建完毕
+
+
+
+
+
+## 4 Home 前台首页
+
+### 4.1 前端调用
+
+在前台界面登陆时，会自动触发如下的代码来请求前台首页数据：
+
+```javascript
+onMounted(() => {
+  // appStore.getPageList()
+  appStore.getBlogInfo()
+  userStore.getUserInfo()
+})
+```
+
+之后，会通过调用 appStore 中的 actions 中的函数修改对应的状态：
+
+```javascript
+export const useAppStore = defineStore('app', {
+    state: () => ({
+        // TODO: 优化
+        blogInfo: {
+            article_count: 0,
+            category_count: 0,
+            tag_count: 0,
+            view_count: 0,
+            user_count: 0,
+        },
+     		blog_config: {
+            website_name: 'CodingHome',
+            website_author: 'Tjyy',
+            website_intro: 'coding is coding',
+            website_avatar: 'https://www.bing.com/rp/ar_9isCNU2Q-VG1yEDDHnx8HAFQ.png',
+            website_notice: 'hello, world',
+            qq: '',
+            github: '',
+            gitee: '',
+            website_createtime: '2025-2-1',
+            website_record: 'CodingHome'
+        },
+    }),
+    getters: {
+        ...
+    },
+    actions: {
+        ...
+        async getBlogInfo() {
+            try {
+                const resp = await api.getHomeData()
+                if (resp.code === 0) {
+                    this.blogInfo = resp.data
+                    this.blog_config = resp.data.blog_config
+                    this.blog_config.website_avatar = convertImgUrl(this.blog_config.website_avatar)
+                }
+                else {
+                    return Promise.reject(resp)
+                }
+            }
+            catch (err) {
+                return Promise.reject(err)
+            }
+        },
+
+       ...
+    },
+})
+
+```
+
+
+
+### 4.2 后端代码 
+
+首先，在 manager.go 中添加对应的方法：
+
+```go
+base.GET("/home", frontAPI.GetHomeInfo)  // 前台首页
+```
+
+新建一个 handle 层的 handle_front.go：
+
+```go
+package handle
+
+import (
+	"gin-blog-server/internal/global"
+	"gin-blog-server/internal/model"
+	"github.com/gin-gonic/gin"
+)
+
+type Front struct{}
+
+// GetHomeInfo 前台首页信息
+func (*Front) GetHomeInfo(c *gin.Context) {
+	db := GetDB(c)
+	rdb := GetRDB(c)
+
+	data, err := model.GetFrontStatistics(db)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	data.ViewCount, _ = rdb.Get(rctx, global.VIEW_COUNT).Int64()
+
+	ReturnSuccess(c, data)
+}
+```
+
+**返回的是一些前端界面的静态数据：**
+
+`FrontHomeVO` 结构体：用于存储博客前台所需的各种统计数据和配置信息。
+
+- `ArticleCount`：表示文章的数量，在 JSON 序列化时对应的键为 `article_count`。
+- `UserCount`：表示用户的数量，在 JSON 序列化时对应的键为 `user_count`。
+- `MessageCount`：表示留言的数量，在 JSON 序列化时对应的键为 `message_count`。
+- `CategoryCount`：表示分类的数量，在 JSON 序列化时对应的键为 `category_count`。
+- `TagCount`：表示标签的数量，在 JSON 序列化时对应的键为 `tag_count`。
+- `ViewCount`：表示博客的访问量，在 JSON 序列化时对应的键为 `view_count`。不过在当前代码中并没有对该字段进行赋值操作。
+- `Config`：是一个 `map[string]string` 类型，用于存储博客的配置信息，在 JSON 序列化时对应的键为 `blog_config`。
+
+这段代码的主要作用是从数据库中获取博客的各种统计数据和配置信息，并将其封装到 `FrontHomeVO` 结构体中返回。
+
+```go
+type FrontHomeVO struct {
+	ArticleCount  int64             `json:"article_count"`  // 文章数量
+	UserCount     int64             `json:"user_count"`     // 用户数量
+	MessageCount  int64             `json:"message_count"`  // 留言数量
+	CategoryCount int64             `json:"category_count"` // 分类数量
+	TagCount      int64             `json:"tag_count"`      // 标签数量
+	ViewCount     int64             `json:"view_count"`     // 访问量
+	Config        map[string]string `json:"blog_config"`    // 博客信息
+}
+
+// GetFrontStatistics 获取前台静态统计数据
+func GetFrontStatistics(db *gorm.DB) (data FrontHomeVO, err error) {
+	result := db.Model(&Article{}).Where("status = ? AND is_delete = ?", 1, 0).Count(&data.ArticleCount)
+	if result.Error != nil {
+		return data, result.Error
+	}
+
+	result = db.Model(&UserAuth{}).Count(&data.UserCount)
+	if result.Error != nil {
+		return data, result.Error
+	}
+
+	result = db.Model(&Message{}).Count(&data.MessageCount)
+	if result.Error != nil {
+		return data, result.Error
+	}
+
+	result = db.Model(&Category{}).Count(&data.CategoryCount)
+	if result.Error != nil {
+		return data, result.Error
+	}
+
+	result = db.Model(&Tag{}).Count(&data.TagCount)
+	if result.Error != nil {
+		return data, result.Error
+	}
+
+	data.Config, err = GetConfigMap(db)
+	if err != nil {
+		return data, err
+	}
+
+	return data, nil
+}
+```
+
+然后，对于 Article、Message、Category 、Tag 相关的数据库模型需要进行补全以及配置。
+
+
+
+### 4.3 功能测试
+
+在进入前台首页时，会自动向后端发送请求，完成后端代码之后，请求和响应如下：
+
+<img src="./assets/image-20250317160531343.png" alt="image-20250317160531343"  />
+
+响应结果如下，可以正确的获得首页静态数据
+
+![image-20250317160803663](./assets/image-20250317160803663.png)
+
+
+
+## 5 Page 前台页面
+
+### 5.1 前端调用
+
+在前端页面进行加载时，会自动调用：
+
+```javascript
+onMounted(() => {
+  appStore.getPageList()
+  appStore.getBlogInfo()
+  userStore.getUserInfo()
+
+  // 挂载全局提示
+  window.$message = messageRef.value
+  window.$notify = notifyRef.value
+})
+```
+
+同时，还会修改 appStore 中的状态，这样在前端其他页面展示时，会显示获取到的响应数据：
+
+```javascript
+import { defineStore } from 'pinia'
+import { convertImgUrl } from '@/utils'
+import api from '@/api'
+
+
+export const useAppStore = defineStore('app', {
+    state: () => ({
+        ...
+        page_list: [], // 页面数据
+        ...
+    }),
+    getters: {
+        ...
+    },
+    actions: {
+        ...
+        async getPageList() {
+            const resp = await api.getPageList()
+            if (resp.code === 0) {
+                this.page_list = resp.data
+                this.page_list?.forEach(e => (e.cover = convertImgUrl(e.cover)))
+            }
+        },
+    },
+})
+
+```
+
+
+
+### 5.2 后端代码
+
+对于 model/page.go 中的模型如下：
+
+```go
+package model
+
+import "gorm.io/gorm"
+
+type Page struct {
+	Model
+	Name  string `gorm:"unique;type:varchar(20)" json:"name"`
+	Label string `gorm:"unique;type:varchar(20)" json:"label"`
+	Cover string `gorm:"type:varchar(255)" json:"cover"`
+}
+
+// GetPageList 获取数据库中的所有 Page 记录
+func GetPageList(db *gorm.DB) ([]Page, int64, error) {
+	var pages = make([]Page, 0)
+	var total int64
+
+	result := db.Model(&Page{}).Count(&total).Find(&pages)
+	return pages, total, result.Error
+}
+
+// SaveOrUpdatePage 保存或更新一个新的 Page 记录
+func SaveOrUpdatePage(db *gorm.DB, id int, name, label, cover string) (*Page, error) {
+	page := Page{
+		Model: Model{ID: id},
+		Name:  name,
+		Label: label,
+		Cover: cover,
+	}
+
+	var result *gorm.DB
+	if id > 0 {
+		result = db.Updates(&page)
+	} else {
+		result = db.Create(&page)
+	}
+
+	return &page, result.Error
+}
+
+```
+
+对于后端功能的实现如下：
+
+```go
+base.GET("/page", pageAPI.GetList)       // 前台页面
+```
+
+```go
+// GetList 获取页面列表
+func (*Page) GetList(c *gin.Context) {
+	db := GetDB(c)
+	rdb := GetRDB(c)
+
+	// get from cache
+	cache, err := getPageCache(rdb)
+	if cache != nil && err == nil {
+		slog.Debug("[handle-page-GetList] get page list from cache")
+		ReturnSuccess(c, cache)
+		return
+	}
+
+	switch err {
+	case redis.Nil:
+		break
+	default:
+		ReturnError(c, global.ErrRedisOp, err)
+		return
+	}
+
+	// get from db
+	data, _, err := model.GetPageList(db)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	// add to cache
+	if err := addPageCache(GetRDB(c), data); err != nil {
+		ReturnError(c, global.ErrRedisOp, err)
+		return
+	}
+
+	ReturnSuccess(c, data)
+}
+
+```
+
+这段代码定义了一个名为 `GetList` 的方法，属于 `Page` 结构体，其主要功能是获取页面列表，优先从缓存中获取数据，如果缓存中没有则从数据库中获取，并将数据库中的数据更新到缓存中。以下是详细的功能介绍：
+
+1. **获取数据库和缓存实例**
+   - 调用 `GetDB(c)` 函数从 Gin 上下文 `c` 中获取数据库连接实例 `db`。
+   - 调用 `GetRDB(c)` 函数从 Gin 上下文 `c` 中获取 Redis 缓存连接实例 `rdb`。
+2. **尝试从缓存中获取页面列表**
+   - 调用 `getPageCache(rdb)` 函数尝试从 Redis 缓存中获取页面列表数据 `cache`。
+   - 如果 `cache` 不为空且获取过程没有错误（`err == nil`），说明缓存中存在数据，记录调试信息并调用 `ReturnSuccess(c, cache)` 函数将缓存中的数据作为成功响应返回给客户端，然后终止函数执行。
+3. **处理缓存获取错误**
+   - 使用 switch 语句处理 err：
+     - 如果 `err` 为 `redis.Nil`，表示缓存中不存在该数据，不做特殊处理，继续后续操作。
+     - 对于其他类型的错误，调用 `ReturnError(c, global.ErrRedisOp, err)` 函数返回 Redis 操作错误信息，并终止函数执行。
+4. **从数据库中获取页面列表**
+   - 调用 `model.GetPageList(db)` 函数从数据库中获取页面列表数据 `data`。
+   - 如果获取过程中出现错误，调用 `ReturnError(c, global.ErrDbOp, err)` 函数返回数据库操作错误信息，并终止函数执行。
+5. **将数据库数据更新到缓存**
+   - 调用 `addPageCache(GetRDB(c), data)` 函数将从数据库中获取的页面列表数据 `data` 更新到 Redis 缓存中。
+   - 如果更新过程中出现错误，调用 `ReturnError(c, global.ErrRedisOp, err)` 函数返回 Redis 操作错误信息，并终止函数执行。
+6. **返回成功响应**
+   - 如果以上步骤都成功执行，调用 `ReturnSuccess(c, data)` 函数将从数据库中获取的页面列表数据作为成功响应返回给客户端。
+
+
+
+### 5.3 功能测试
+
+前端界面刷新后会自动发送请求如下：
+
+![image-20250317171607304](./assets/image-20250317171607304.png)
+
+之后，会得到对应的响应，当前没有 page 信息，所以返回为空。
+
+![image-20250317172210049](./assets/image-20250317172210049.png)
+

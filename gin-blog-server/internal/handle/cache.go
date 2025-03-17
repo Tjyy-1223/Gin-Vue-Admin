@@ -2,7 +2,9 @@ package handle
 
 import (
 	"context"
+	"encoding/json"
 	"gin-blog-server/internal/global"
+	"gin-blog-server/internal/model"
 	"github.com/redis/go-redis/v9"
 	"time"
 )
@@ -40,4 +42,27 @@ func GetMailInfo(rdb *redis.Client, info string) (bool, error) {
 // DeleteMailInfo 从 rdb 中删除相关的邮箱信息
 func DeleteMailInfo(rdb *redis.Client, info string) error {
 	return rdb.Del(rctx, info).Err()
+}
+
+// addPageCache 将页面列表缓存到 Redis 中
+func addPageCache(rdb *redis.Client, pages []model.Page) error {
+	data, err := json.Marshal(pages)
+	if err != nil {
+		return err
+	}
+	return rdb.Set(rctx, global.PAGE, string(data), 0).Err()
+}
+
+// getPageCache 从 Redis 中获取页面列表缓存
+// rdb.Get 如果不存在 key，会返回 redis.Nil 错误
+func getPageCache(rdb *redis.Client) (cache []model.Page, err error) {
+	s, err := rdb.Get(rctx, global.PAGE).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal([]byte(s), &cache); err != nil {
+		return nil, err
+	}
+	return cache, nil
 }

@@ -46,22 +46,22 @@ export const useAppStore = defineStore('app', {
         setLoginFlag(flag: any) { this.loginFlag = flag },
         setRegisterFlag(flag: any) { this.registerFlag = flag },
         setSearchFlag(flag: any) { this.searchFlag = flag },
-        // async getBlogInfo() {
-        //     try {
-        //         const resp = await api.getHomeData()
-        //         if (resp.code === 0) {
-        //             this.blogInfo = resp.data
-        //             this.blog_config = resp.data.blog_config
-        //             this.blog_config.website_avatar = convertImgUrl(this.blog_config.website_avatar)
-        //         }
-        //         else {
-        //             return Promise.reject(resp)
-        //         }
-        //     }
-        //     catch (err) {
-        //         return Promise.reject(err)
-        //     }
-        // },
+        async getBlogInfo() {
+            try {
+                const resp = await api.getHomeData()
+                if (resp.code === 0) {
+                    this.blogInfo = resp.data
+                    this.blog_config = resp.data.blog_config
+                    this.blog_config.website_avatar = convertImgUrl(this.blog_config.website_avatar)
+                }
+                else {
+                    return Promise.reject(resp)
+                }
+            }
+            catch (err) {
+                return Promise.reject(err)
+            }
+        },
 
         async getPageList() {
             const resp = await api.getPageList()

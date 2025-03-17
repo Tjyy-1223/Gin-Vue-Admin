@@ -43,9 +43,9 @@ const messageRef = ref(null)
 const notifyRef = ref(null)
 
 onMounted(() => {
-  // appStore.getPageList()
-  // appStore.getBlogInfo()
-  // userStore.getUserInfo()
+  appStore.getPageList()
+  appStore.getBlogInfo()
+  userStore.getUserInfo()
 
   // 挂载全局提示
   window.$message = messageRef.value

@@ -17,8 +17,14 @@ func MakeMigrate(db *gorm.DB) error {
 	db.SetupJoinTable(&Role{}, "Users", &UserAuthRole{})
 
 	return db.AutoMigrate(
+		&Article{},      // 文章
+		&Category{},     // 分类
+		&Tag{},          // 标签
+		&Message{},      // 消息
+		&Page{},         // 页面
 		&Config{},       // 网站设置
 		&OperationLog{}, // 操作日志
+		&UserInfo{},     // 用户信息
 
 		&UserAuth{},     // 用户验证
 		&Role{},         // 角色

@@ -14,6 +14,8 @@ var (
 	userAuthAPI handle.UserAuth // 用户账号
 	blogInfoAPI handle.BlogInfo // 博客设置
 	userAPI     handle.User     // 用户
+	pageAPI     handle.Page     // 页面
+	frontAPI    handle.Front    // 博客前台接口
 )
 
 func RegisterHandlers(r *gin.Engine) {
@@ -69,6 +71,12 @@ func registerAdminHandler(r *gin.Engine) {
 		user.GET("/info", userAPI.GetInfo)          // 获取当前用户信息
 		user.GET("/current", userAPI.UpdateCurrent) // 修改当前用户信息
 	}
+
+	// 资源模块
+	//resource := auth.Group("/resource")
+	//{
+	//	resource.GET("/list", resourceAPI.GetTreeList) // 资源列表(树形)
+	//}
 }
 
 // 博客前台相关接口：大部分不需要登陆，部分需要登陆
@@ -76,8 +84,8 @@ func registerBlogHandler(r *gin.Engine) {
 	base := r.Group("/api/front")
 
 	base.GET("/about", blogInfoAPI.GetAbout) // 获取关于我
-	//base.GET("/home", frontAPI.getHomeInfo)  // 前台首页
-	//base.GET("/page", pageAPI.GetList)  // 前台页面
+	base.GET("/home", frontAPI.GetHomeInfo)  // 前台首页
+	base.GET("/page", pageAPI.GetList)       // 前台页面
 
 	// 需要登录才能进行的操作
 	base.Use(middleware.JWTAuth())
