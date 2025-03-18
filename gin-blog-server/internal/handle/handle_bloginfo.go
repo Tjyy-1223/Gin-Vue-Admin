@@ -6,11 +6,19 @@ import (
 	"gin-blog-server/internal/model"
 	"gin-blog-server/internal/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"log/slog"
 	"strings"
 )
 
 type BlogInfo struct{}
+
+type BlogHomeVO struct {
+	ArticleCount int `json:"article_count"` // 文章数量
+	UserCount    int `json:"user_count"`    // 用户数量
+	MessageCount int `json:"message_count"` // 留言数量
+	ViewCount    int `json:"view_count"`    // 访问量
+}
 
 type AboutReq struct {
 	Content string `json:"content"`
@@ -163,4 +171,47 @@ func (*BlogInfo) UpdateAbout(c *gin.Context) {
 		return
 	}
 	ReturnSuccess(c, req.Content)
+}
+
+// GetHomeInfo 后台获取 Home 数据
+// @Summary 获取博客首页信息
+// @Description 获取博客首页信息
+// @Tags blog_info
+// @Produce json
+// @Success 0 {object} Response[model.BlogHomeVO]
+// @Router /home [get]
+func (*BlogInfo) GetHomeInfo(c *gin.Context) {
+	db := GetDB(c)
+	rdb := GetRDB(c)
+
+	articleCount, err := model.Count(db, &model.Article{}, "status = ? AND is_delete = ?", 1, 0)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	userCount, err := model.Count(db, &model.UserInfo{})
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	messageCount, err := model.Count(db, &model.Message{})
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	viewCount, err := rdb.Get(rctx, global.VIEW_COUNT).Int()
+	if err != nil && err != redis.Nil {
+		ReturnError(c, global.ErrRedisOp, err)
+		return
+	}
+
+	ReturnSuccess(c, BlogHomeVO{
+		ArticleCount: articleCount,
+		UserCount:    userCount,
+		MessageCount: messageCount,
+		ViewCount:    viewCount,
+	})
 }

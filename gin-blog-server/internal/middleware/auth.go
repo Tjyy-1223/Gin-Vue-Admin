@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"fmt"
 	"gin-blog-server/internal/global"
 	"gin-blog-server/internal/handle"
@@ -25,29 +26,29 @@ func JWTAuth() gin.HandlerFunc {
 		db := c.MustGet(global.CTX_DB).(*gorm.DB)
 
 		// 系统管理的资源需要进行用户鉴权，其他资源不需要鉴权
-		//url, method := c.FullPath()[4:], c.Request.Method
-		//resource, err := model.GetResource(db, url, method)
-		//if err != nil {
-		//	// 没有找到的资源，不需要鉴权，跳过后续的验证过程
-		//	if errors.Is(err, gorm.ErrRecordNotFound) {
-		//		slog.Debug("[middleware-JWTAuth] resource not exist, skip jwt auth")
-		//		c.Set("skip_check", true)
-		//		c.Next()
-		//		c.Set("skip_check", false)
-		//		return
-		//	}
-		//	handle.ReturnError(c, global.ErrDbOp, err)
-		//	return
-		//}
+		url, method := c.FullPath()[4:], c.Request.Method
+		resource, err := model.GetResource(db, url, method)
+		if err != nil {
+			// 没有找到的资源，不需要鉴权，跳过后续的验证过程
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				slog.Debug("[middleware-JWTAuth] resource not exist, skip jwt auth")
+				c.Set("skip_check", true)
+				c.Next()
+				c.Set("skip_check", false)
+				return
+			}
+			handle.ReturnError(c, global.ErrDbOp, err)
+			return
+		}
 
 		// 匿名资源，不需要鉴权，跳过后续的验证过程
-		//if resource.Anonymous {
-		//	slog.Debug(fmt.Sprintf("[middleware-JWTAuth] resouce: %s %s is anonymous, skip jwt auth!", url, method))
-		//	c.Set("skip_check", true)
-		//	c.Next()
-		//	c.Set("skip_check", false)
-		//	return
-		//}
+		if resource.Anonymous {
+			slog.Debug(fmt.Sprintf("[middleware-JWTAuth] resouce: %s %s is anonymous, skip jwt auth!", url, method))
+			c.Set("skip_check", true)
+			c.Next()
+			c.Set("skip_check", false)
+			return
+		}
 
 		authorization := c.Request.Header.Get("Authorization")
 		if authorization == "" {

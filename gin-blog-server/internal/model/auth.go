@@ -178,3 +178,33 @@ func CreateNewUser(db *gorm.DB, username, password string) (*UserAuth, *UserInfo
 	}
 	return userAuth, userinfo, userRole, result.Error
 }
+
+// GetAllMenuList 获取所有菜单列表（超级管理员用）
+func GetAllMenuList(db *gorm.DB) (menu []Menu, err error) {
+	result := db.Find(&menu)
+	return menu, result.Error
+}
+
+// GetMenuListByUserId 根据 user id 获取菜单列表
+func GetMenuListByUserId(db *gorm.DB, id int) (menus []Menu, err error) {
+	var userAuth UserAuth
+	result := db.Where(&UserAuth{Model: Model{ID: id}}).
+		Preload("Roles").Preload("Roles.Menus").First(&userAuth)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	set := make(map[int]Menu)
+	for _, role := range userAuth.Roles {
+		for _, menu := range role.Menus {
+			set[menu.ID] = menu
+		}
+	}
+
+	for _, menu := range set {
+		menus = append(menus, menu)
+	}
+
+	return menus, nil
+}

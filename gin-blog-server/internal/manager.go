@@ -16,6 +16,7 @@ var (
 	userAPI     handle.User     // 用户
 	pageAPI     handle.Page     // 页面
 	frontAPI    handle.Front    // 博客前台接口
+	menuAPI     handle.Menu     // 菜单
 )
 
 func RegisterHandlers(r *gin.Engine) {
@@ -58,6 +59,8 @@ func registerAdminHandler(r *gin.Engine) {
 	auth.Use(middleware.OperationLog())
 	auth.Use(middleware.ListenOnline())
 
+	auth.GET("/home", blogInfoAPI.GetHomeInfo) // 后台首页信息
+
 	// 博客设置
 	setting := auth.Group("/setting")
 	{
@@ -70,6 +73,12 @@ func registerAdminHandler(r *gin.Engine) {
 	{
 		user.GET("/info", userAPI.GetInfo)          // 获取当前用户信息
 		user.GET("/current", userAPI.UpdateCurrent) // 修改当前用户信息
+	}
+
+	// 菜单模块
+	menu := auth.Group("/menu")
+	{
+		menu.GET("/user/list", menuAPI.GetUserMenu) // 获取当前用户的菜单
 	}
 
 	// 资源模块
