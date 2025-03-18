@@ -79,6 +79,10 @@ func registerAdminHandler(r *gin.Engine) {
 	menu := auth.Group("/menu")
 	{
 		menu.GET("/user/list", menuAPI.GetUserMenu) // 获取当前用户的菜单
+		menu.GET("/list", menuAPI.GetTreeList)      // 菜单列表
+		menu.POST("", menuAPI.SaveOrUpdate)         // 新增/编辑菜单
+		menu.DELETE("/:id", menuAPI.Delete)         // 删除菜单
+		menu.GET("/option", menuAPI.GetOption)      // 菜单选项列表（树形）
 	}
 
 	// 资源模块

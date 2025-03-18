@@ -208,3 +208,54 @@ func GetMenuListByUserId(db *gorm.DB, id int) (menus []Menu, err error) {
 
 	return menus, nil
 }
+
+// GetMenuList 根据 keyword 从数据库中获取 menu 菜单
+func GetMenuList(db *gorm.DB, keyword string) (List []Menu, total int64, err error) {
+	db = db.Model(&Menu{})
+	if keyword != "" {
+		db = db.Where("name like ?", "%"+keyword+"%")
+	}
+	result := db.Count(&total).Find(&List)
+	return List, total, result.Error
+}
+
+// SaveOrUpdateMenu 新增和编辑菜单
+func SaveOrUpdateMenu(db *gorm.DB, menu *Menu) error {
+	var result *gorm.DB
+
+	if menu.ID > 0 { // 编辑菜单
+		result = db.Model(menu).
+			Select("name", "path", "component", "icon", "redirect", "parent_id", "order_num", "catalogue", "hidden", "keep_alive", "external").
+			Updates(menu)
+	} else { // 新建菜单
+		result = db.Create(menu)
+	}
+
+	return result.Error
+}
+
+// CheckMenuInUse 判断当前菜单是否正在使用中, 传入 menuId
+func CheckMenuInUse(db *gorm.DB, id int) (bool, error) {
+	var count int64
+	result := db.Model(&RoleMenu{}).Where("menu_id = ?", id).Count(&count)
+	return count > 0, result.Error
+}
+
+// GetMenuById 根据 menuId 获取对应的菜单记录
+func GetMenuById(db *gorm.DB, id int) (menu *Menu, err error) {
+	result := db.First(&menu, id)
+	return menu, result.Error
+}
+
+// CheckMenuHasChild 根据 menuId 判断获取的菜单是否有子菜单
+func CheckMenuHasChild(db *gorm.DB, id int) (bool, error) {
+	var count int64
+	result := db.Model(&Menu{}).Where("parent_id = ?", id).Count(&count)
+	return count > 0, result.Error
+}
+
+// DeleteMenu 根据 menuId 删除对应的菜单
+func DeleteMenu(db *gorm.DB, id int) error {
+	result := db.Delete(&Menu{}, id)
+	return result.Error
+}

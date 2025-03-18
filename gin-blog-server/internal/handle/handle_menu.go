@@ -1,10 +1,13 @@
 package handle
 
 import (
+	"errors"
 	"gin-blog-server/internal/global"
 	"gin-blog-server/internal/model"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 	"sort"
+	"strconv"
 )
 
 type Menu struct{}
@@ -37,6 +40,18 @@ func (*Menu) GetUserMenu(c *gin.Context) {
 	ReturnSuccess(c, menus2MenuVos(menus))
 }
 
+// GetTreeList 根据请求url中携带的 keyword 条件来获取对应的菜单列表
+func (*Menu) GetTreeList(c *gin.Context) {
+	keyword := c.Query("keyword")
+
+	menuList, _, err := model.GetMenuList(GetDB(c), keyword)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, menus2MenuVos(menuList))
+}
+
 // 构建菜单列表的树形数据结构, []Menu => []MenuVo
 func menus2MenuVos(menus []model.Menu) []MenuTreeVO {
 	result := make([]MenuTreeVO, 0)
@@ -57,6 +72,85 @@ func menus2MenuVos(menus []model.Menu) []MenuTreeVO {
 
 	sortMenu(result)
 	return result
+}
+
+// SaveOrUpdate 新增和编辑菜单
+func (*Menu) SaveOrUpdate(c *gin.Context) {
+	var req model.Menu
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	if err := model.SaveOrUpdateMenu(GetDB(c), &req); err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, nil)
+}
+
+// Delete 删除菜单
+func (*Menu) Delete(c *gin.Context) {
+	menuId, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	db := GetDB(c)
+
+	// 检查要删除的菜单是否被角色使用
+	use, _ := model.CheckMenuInUse(db, menuId)
+	if use {
+		ReturnError(c, global.ErrMenuUsedByRole, nil)
+		return
+	}
+
+	menu, err := model.GetMenuById(db, menuId)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			ReturnError(c, global.ErrMenuNotExist, nil)
+			return
+		}
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	// 如果是一级菜单，检查其中是否有子菜单
+	// 如果一级菜单有子菜单，不允许删除
+	if menu.ParentId == 0 {
+		has, _ := model.CheckMenuHasChild(db, menuId)
+		if has {
+			ReturnError(c, global.ErrMenuHasChildren, nil)
+			return
+		}
+	}
+
+	if err = model.DeleteMenu(db, menuId); err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, nil)
+}
+
+// GetOption 获取菜单选项列表（树形）
+func (*Menu) GetOption(c *gin.Context) {
+	menus, _, err := model.GetMenuList(GetDB(c), "")
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	result := make([]TreeOptionVO, 0)
+	for _, menu := range menus2MenuVos(menus) {
+		option := TreeOptionVO{ID: menu.ID, Label: menu.Name}
+		for _, child := range menu.Children {
+			option.Children = append(option.Children, TreeOptionVO{ID: child.ID, Label: child.Name})
+		}
+		result = append(result, option)
+	}
+
+	ReturnSuccess(c, result)
 }
 
 // 筛选出一级菜单 (parentId == 0 的菜单)

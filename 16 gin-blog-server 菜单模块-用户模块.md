@@ -252,7 +252,7 @@ func sortMenu(menus []MenuTreeVO) {
 
 然后，刷新后台界面，查看响应如下：
 
-<img src="./assets/image-20250318125517484.png" alt="image-20250318125517484" style="zoom:67%;" />
+<img src="./assets/image-20250318125517484.png" alt="image-20250318125517484"  />
 
 然后我们可以正常进入后台界面，展示如下：
 
@@ -264,19 +264,277 @@ func sortMenu(menus []MenuTreeVO) {
 
 ### 1.3 菜单列表 /menu/list
 
+首先在 manager 中添加对应的接口：
 
+```go
+menu.GET("/list", menuAPI.GetTreeList)      // 菜单列表
+```
+
+internal/handle/handle_menu.go:
+
+```go
+// GetTreeList 根据请求url中携带的 keyword 条件来获取对应的菜单列表
+func (*Menu) GetTreeList(c *gin.Context) {
+	keyword := c.Query("keyword")
+
+	menuList, _, err := model.GetMenuList(GetDB(c), keyword)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, menus2MenuVos(menuList))
+}
+```
+
+internal/model/auth.go:
+
+```go
+// GetMenuList 根据 keyword 从数据库中获取 menu 菜单
+func GetMenuList(db *gorm.DB, keyword string) (List []Menu, total int64, err error) {
+	db = db.Model(&Menu{})
+	if keyword != "" {
+		db = db.Where("name like ?", "%"+keyword+"%")
+	}
+	result := db.Count(&total).Find(&List)
+	return List, total, result.Error
+}
+```
+
+可以点击后台 - 权限管理 - 菜单管理触发 /menu/list + keyword=""的请求，请求如下：
+
+<img src="./assets/image-20250318141547883.png" alt="image-20250318141547883"  />
+
+得到的响应如下：
+
+![image-20250318141620783](./assets/image-20250318141620783.png)
+
+或者，也可以输入关键词来触发菜单的选取。
+
+![image-20250318141711176](./assets/image-20250318141711176.png)
 
 
 
 ### 1.4 新增菜单 /menu
 
+大致的思路和上面一样，下面的后端代码就简单点描述了
+
+```go
+// manager.go 
+menu.POST("", menuAPI.SaveOrUpdate)         // 新增/编辑菜单
+
+// internal/handle/handle_menu.go:
+// SaveOrUpdate 新增和编辑菜单
+func (*Menu) SaveOrUpdate(c *gin.Context) {
+	var req model.Menu
+	if err := c.ShouldBindJSON(&req); err != nil{
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+	
+	if err := model.SaveOrUpdateMenu(GetDB(c), &req); err != nil{
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, nil)
+}
+
+
+// internal/model/auth.go:
+// SaveOrUpdateMenu 新增和编辑菜单
+func SaveOrUpdateMenu(db *gorm.DB, menu *Menu) error {
+	var result *gorm.DB
+
+	if menu.ID > 0 { // 编辑菜单
+		result = db.Model(menu).
+			Select("name", "path", "component", "icon", "redirect", "parent_id", "order_num", "catalogue", "hidden", "keep_alive", "external").
+			Updates(menu)
+	} else { // 新建菜单
+		result = db.Create(menu)
+	}
+
+	return result.Error
+}
+```
+
+之后我们点击一个菜单进行 编辑 + 保存的操作，发送出的请求如下：
+
+![image-20250318144130667](./assets/image-20250318144130667.png)
+
+得到的响应如下：
+
+![image-20250318144227081](./assets/image-20250318144227081.png)
+
+分析原因如下：
+
+1. 在数据库表 resource 中，新增/编辑菜单的 resource 记录的 ID 为 39
+2. 而在表 role_resource 中，映射关系只有 39-1
+3. 对于 role 表，ID 为 1 的角色为管理员 admin
+4. **也就是说，只有管理员才可以操作新增/编辑菜单**
+
+<img src="./assets/image-20250318144317871.png" alt="image-20250318144317871"  />
+
 
 
 ### 1.5 删除菜单 /menu/:id
 
+**看了一下数据库中的管理，删除菜单的功能也是只有管理员 admin 才可以进行操作的**
+
+大致的思路和上面一样，下面的后端代码就简单点描述了
+
+这段代码定义了 `Menu` 结构体的 `Delete` 方法，其作用是处理删除菜单的请求，在删除前进行多项检查，确保删除操作的合理性。具体步骤如下：
+
+1. **获取菜单 ID**：从请求参数中获取要删除的菜单 ID，若解析失败则返回请求错误。
+2. **检查菜单是否被角色使用**：调用 `model.CheckMenuInUse` 检查菜单是否被角色使用，若被使用则返回错误。
+3. **检查菜单是否存在**：调用 `model.GetMenuById` 获取菜单信息，若菜单不存在则返回相应错误，若出现其他数据库错误也返回对应错误。
+4. **检查一级菜单是否有子菜单**：若菜单为一级菜单，调用 `model.CheckMenuHasChild` 检查是否有子菜单，若有则返回错误。
+5. **执行删除操作**：调用 `model.DeleteMenu` 删除菜单，若出现数据库错误则返回对应错误，若成功则返回成功响应。
+
+```go
+// manager.go 
+menu.DELETE("/:id", menuAPI.Delete)         // 删除菜单
+
+// internal/handle/handle_menu.go:
+// Delete 删除菜单
+func (*Menu) Delete(c *gin.Context) {
+	menuId, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	db := GetDB(c)
+
+	// 检查要删除的菜单是否被角色使用
+	use, _ := model.CheckMenuInUse(db, menuId)
+	if use {
+		ReturnError(c, global.ErrMenuUsedByRole, nil)
+		return
+	}
+
+	menu, err := model.GetMenuById(db, menuId)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			ReturnError(c, global.ErrMenuNotExist, nil)
+			return
+		}
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	// 如果是一级菜单，检查其中是否有子菜单
+	// 如果一级菜单有子菜单，不允许删除
+	if menu.ParentId == 0 {
+		has, _ := model.CheckMenuHasChild(db, menuId)
+		if has {
+			ReturnError(c, global.ErrMenuHasChildren, nil)
+			return
+		}
+	}
+	
+	if err  = model.DeleteMenu(db, menuId); err != nil{
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, nil)
+}
+```
+
+**补全对应的菜单数据库操作：**
+
+1. CheckMenuInUse 判断当前菜单是否正在使用中
+2. GetMenuById 根据 menuId 获取对应的菜单记录
+3. CheckMenuHasChild  根据 menuId 判断获取的菜单是否有子菜单
+4. DeleteMenu 根据 menuId 删除对应的菜单
+
+```go
+// internal/model/auth.go:
+
+// CheckMenuInUse 判断当前菜单是否正在使用中, 传入 menuId
+func CheckMenuInUse(db *gorm.DB, id int) (bool, error) {
+	var count int64
+	result := db.Model(&RoleMenu{}).Where("menu_id = ?", id).Count(&count)
+	return count > 0, result.Error
+}
+
+// GetMenuById 根据 menuId 获取对应的菜单记录
+func GetMenuById(db *gorm.DB, id int) (menu *Menu, err error) {
+	result := db.First(&menu, id)
+	return menu, result.Error
+}
+
+// CheckMenuHasChild 根据 menuId 判断获取的菜单是否有子菜单
+func CheckMenuHasChild(db *gorm.DB, id int) (bool, error) {
+	var count int64
+	result := db.Model(&Menu{}).Where("parent_id = ?", id).Count(&count)
+	return count > 0, result.Error
+}
+
+// DeleteMenu 根据 menuId 删除对应的菜单
+func DeleteMenu(db *gorm.DB, id int) error {
+	result := db.Delete(&Menu{}, id)
+	return result.Error
+}
+```
+
+**点击一个菜单进行删除时，发送的请求如下：**
+
+![image-20250318192131281](./assets/image-20250318192131281.png)
+
+**得到对应的响应：**
+
+![image-20250318192213851](./assets/image-20250318192213851.png)
+
+![image-20250318192307459](./assets/image-20250318192307459.png)
+
+可以看到，普通用户不可以删除菜单。
+
 
 
 ### 1.6 菜单选项列表 /option
+
+**首先补充一个结构体 handle_resource.go - TreeOptionVO**
+
+```go
+type Resource struct{}
+
+type TreeOptionVO struct {
+	ID       int            `json:"key"`
+	Label    string         `json:"label"`
+	Children []TreeOptionVO `json:"children"`
+}
+```
+
+大致的思路和上面一样，下面的后端代码就简单点描述了
+
+```go
+// manager.go 
+menu.GET("/option", menuAPI.GetOption)      // 菜单选项列表（树形）
+
+// internal/handle/handle_menu.go:
+// GetOption 获取菜单选项列表（树形）
+func (*Menu) GetOption(c *gin.Context) {
+	menus, _, err := model.GetMenuList(GetDB(c), "")
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	result := make([]TreeOptionVO, 0)
+	for _, menu := range menus2MenuVos(menus) {
+		option := TreeOptionVO{ID: menu.ID, Label: menu.Name}
+		for _, child := range menu.Children {
+			option.Children = append(option.Children, TreeOptionVO{ID: child.ID, Label: child.Name})
+		}
+		result = append(result, option)
+	}
+	
+	ReturnSuccess(c, result)
+}
+```
+
+点击后台 - 角色管理- 操作管理，发送对应的请求，查看响应。（但是目前还没有开发角色模块，所以该功能暂不测试）
+
+至此，菜单相关的功能接口开发完成
 
 
 
