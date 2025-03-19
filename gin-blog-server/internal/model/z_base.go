@@ -40,6 +40,11 @@ type Model struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type OptionVO struct {
+	ID   int    `json:"value"`
+	Name string `json:"name"`
+}
+
 // Count 根据 where 条件统计数据
 func Count[T any](db *gorm.DB, data *T, where ...any) (int, error) {
 	var total int64

@@ -448,7 +448,6 @@ func (*Menu) Delete(c *gin.Context) {
 
 ```go
 // internal/model/auth.go:
-
 // CheckMenuInUse 判断当前菜单是否正在使用中, 传入 menuId
 func CheckMenuInUse(db *gorm.DB, id int) (bool, error) {
 	var count int64
@@ -541,3 +540,331 @@ func (*Menu) GetOption(c *gin.Context) {
 
 
 ## 2 用户模块 user
+
+对于用户模块，后端中涉及的，但是还没有开发的接口如下：
+
+```go
+// 用户模块
+	user := auth.Group("/user")
+	{
+		user.GET("/list", userAPI.GetList)          // 用户列表
+		user.PUT("", userAPI.Update)                // 更新用户信息
+		user.PUT("/disable", userAPI.UpdateDisable) // 修改用户禁用状态
+		user.PUT("/current/password", userAPI.UpdateCurrentPassword) // 修改管理员密码
+		user.GET("/online", userAPI.GetOnlineList)                   // 获取在线用户
+		user.POST("/offline/:id", userAPI.ForceOffline)              // 强制用户下线
+	}
+```
+
+我们对其进行开发，相应的触发条件为后台的用户管理-用户列表中点击触发，或用户列表-在线用户中点击触发。
+
+
+
+### 2.1 用户列表 /user/list
+
+```go
+// manager.go
+user.GET("/list", userAPI.GetList)          // 用户列表
+```
+
+Handle/base.go
+
+```go
+// PageQuery 分页获取数据
+type PageQuery struct {
+	Page    int    `form:"page_num"`  // 当前页数，从1开始
+	Size    int    `form:"page_size"` // 每页条数
+	Keyword string `form:"keyword"`   // 搜索关键字
+}
+
+// PageResult 分页响应数据
+type PageResult[T any] struct {
+	Page  int   `json:"page_num"`  // 当前页数，从1开始
+	Size  int   `json:"page_size"` // 每页条数
+	Total int64 `json:"total"`     // 总条数
+	List  []T   `json:"page_data"` // 分页数据
+}
+```
+
+在使用 `gin` 这类 Web 框架时，`form` 标签用于把 HTTP 请求里的表单数据绑定到结构体字段上。
+
+当使用 `c.ShouldBindQuery` 或者 `c.ShouldBind` 这类方法来绑定请求参数时，`gin` 框架会依据 `form` 标签指定的名称从请求的查询参数或者表单数据里查找对应的值，然后把这些值赋值给结构体的相应字段。
+
+去掉 `form` 标签是可行的，但会有不同的效果：
+
+- **默认绑定规则**：若去掉 `form` 标签，`gin` 框架会按照结构体字段名来绑定请求参数。例如，若请求参数名和结构体字段名一致，框架会自动绑定。不过，若请求参数名和结构体字段名不一致，就无法正确绑定。
+- **代码可读性和灵活性**：保留 `form` 标签能提升代码的可读性和灵活性。你可以通过 `form` 标签指定不同的请求参数名，而不用修改结构体字段名。此外，`form` 标签还能让代码更清晰地表明每个字段对应的请求参数名。
+
+**handle/handle_user.go**
+
+```go
+type UserQuery struct {
+	PageQuery
+	LoginType int8   `form:"login_type"`
+	Username  string `form:"username"`
+	Nickname  string `form:"nickname"`
+}
+
+func (*User) GetList(c *gin.Context) {
+	var query UserQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	list, count, err := model.GetUserList(GetDB(c), query.Page, query.Size, query.LoginType, query.Nickname, query.Username)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, PageResult[model.UserAuth]{
+		Size:  query.Size,
+		Page:  query.Page,
+		Total: count,
+		List:  list,
+	})
+}
+```
+
+> 这里容易把 ShouldBindQuery 写成 ShouldBindJSON
+>
+> 在使用 `Gin` 框架进行 Web 开发时，`ShouldBindQuery` 和 `ShouldBindJSON` 是两个常用的方法，用于将 HTTP 请求中的数据绑定到 Go 结构体中，但它们在处理的数据来源、数据格式和使用场景上存在明显区别，下面为你详细介绍。
+>
+> 数据来源
+>
+> - **`ShouldBindQuery`**：该方法主要用于从 HTTP 请求的查询字符串（即 URL 中 `?` 后面的部分）中提取数据，并将其绑定到指定的结构体中。例如，对于 URL `http://example.com/api/users?name=John&age=30`，`ShouldBindQuery` 会尝试从 `name=John&age=30` 这个查询字符串里提取数据。
+> - **`ShouldBindJSON`**：此方法是从 HTTP 请求的请求体（`body`）中获取数据，并且要求请求体的格式为 JSON 类型。比如，当客户端发送一个 POST 请求，请求体为 `{"name": "John", "age": 30}` 时，`ShouldBindJSON` 会从这个 JSON 数据中提取信息。
+>
+> 数据格式
+>
+> - **`ShouldBindQuery`**：处理的数据格式是键值对形式，键和值之间用 `=` 连接，不同的键值对之间用 `&` 分隔。例如 `key1=value1&key2=value2`。
+> - **`ShouldBindJSON`**：处理的数据格式必须是标准的 JSON 格式，有明确的键值对结构，并且使用大括号 `{}` 或中括号 `[]` 来组织数据。比如 `{"key1": "value1", "key2": "value2"}` 或者 `["value1", "value2"]`。
+
+**model/user.go**
+
+```go
+// GetUserList 获取当前存在的用户列表
+func GetUserList(db *gorm.DB, page, size int, loginType int8, nickname, username string) (list []UserAuth, total int64, err error) {
+	if loginType != 0 {
+		db = db.Where("login_type = ?", loginType)
+	}
+	if username != "" {
+		db = db.Where("username LIKE ?", "%"+username+"%")
+	}
+
+	result := db.Model(&UserAuth{}).
+		Joins("LEFT JOIN user_info ON user_info.id = user_auth.user_info_id").
+		Where("user_info.nickname LIKE ?", "%"+nickname+"%").
+		Preload("UserInfo").
+		Preload("Roles").
+		Count(&total).
+		Scopes(Paginate(page, size)).
+		Find(&list)
+
+	return list, total, result.Error
+}
+```
+
+但是，仅完成上面的 /user/list 功能还不够，前端发送请求的时候会同时请求 /role/option 接口，代码如下
+
+```javascript
+// views/user/list/index.vue
+// 在组件挂载时，加载角色选项并触发表格搜索
+onMounted(() => {
+    api.getRoleOption().then(resp => roleOptions.value = resp.data)  // 获取角色选项
+    $table.value?.handleSearch()  // 触发表格的初始搜索
+})
+```
+
+所以，我们在这里需要同时补充  /role/option 接口：
+
+```go
+// manager.go
+// 角色模块 
+role := auth.Group("/role")
+{
+  role.GET("/option", roleAPI.GetOption)
+}
+
+//handle_role.go
+// GetOption 获取角色选项
+// @Summary 获取角色选项
+// @Description 获取角色选项
+// @Tags role
+// @Produce json
+// @Success 0 {object} Response[model.OptionVO]
+// @Router /role/option [get]
+func (*Role) GetOption(c *gin.Context) {
+	list, err := model.GetRoleOption(GetDB(c))
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, list)
+}
+
+
+// model/auth.go
+// GetRoleOption 获取角色配置
+func GetRoleOption(db *gorm.DB) (list []OptionVO, err error) {
+	result := db.Model(&Role{}).Select("id", "name").Find(&list)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return list, nil
+}
+```
+
+**上述过程对后端代码进行了构建，然后我们去后台界面中，点击后台 - 角色管理，查看发送的请求：**
+
+![image-20250319210435029](./assets/image-20250319210435029.png)
+
+展示的界面如下：
+
+![image-20250319210519962](./assets/image-20250319210519962.png)
+
+
+
+
+
+### 2.2 更新用户列表 /user
+
+manager.go
+
+```go
+user.PUT("", userAPI.Update)                // 更新用户信息
+```
+
+handle_user.go
+
+```go
+type UpdateUserReq struct {
+	UserAuthId int    `json:"id"`
+	Nickname   string `json:"nickname" binding:"required"`
+	RoleIds    []int  `json:"role_ids"`
+}
+
+
+// Update 更新用户信息：主要是对用户名和用户角色进行更新
+func (*User) Update(c *gin.Context) {
+	var req UpdateUserReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	if err := model.UpdateUserNicknameAndRole(GetDB(c), req.UserAuthId, req.Nickname, req.RoleIds); err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, nil)
+}
+```
+
+user.go
+
+```go
+// UpdateUserNicknameAndRole 更新用户昵称及角色信息
+func UpdateUserNicknameAndRole(db *gorm.DB, authId int, nickname string, roleIds []int) error {
+	userAuth, err := GetUserAuthInfoById(db, authId)
+	if err != nil {
+		return err
+	}
+
+	userInfo := UserInfo{
+		Model:    Model{ID: userAuth.UserInfoId},
+		Nickname: nickname,
+	}
+
+	// 更新用户信息
+	result := db.Model(&userInfo).Updates(userInfo)
+	if result.Error != nil {
+		return result.Error
+	}
+
+	// 判断，至少有一个角色，一个用户也可以有多个角色
+	if len(roleIds) == 0 {
+		return nil
+	}
+
+	// 更新用户角色, 清空原本的 user_role 关系, 添加新的关系
+	result = db.Where(UserAuthRole{UserAuthId: userAuth.ID}).Delete(UserAuthRole{})
+	if result.Error != nil {
+		return result.Error
+	}
+
+	var userRoles []UserAuthRole
+	for _, id := range roleIds {
+		userRoles = append(userRoles, UserAuthRole{
+			RoleId:     id,
+			UserAuthId: userAuth.ID,
+		})
+	}
+	result = db.Create(&userRoles)
+	return result.Error
+}
+```
+
+如果直接进行操作，则会被告知权限不足，所以我们直接手动修改数据库，将自己的用户修改为管理员
+
++ 在 user_auth_role 中添加一个记录：ID-1（1代表管理员）即可
+
+**我们可以尝试修改一个用户，如下：**
+
+![image-20250319220937938](./assets/image-20250319220937938.png)
+
+![image-20250319221634853](./assets/image-20250319221634853.png)
+
+**得到的响应展示如下，可以看到编辑成功：**
+
+![image-20250319221708349](/Users/tianjiangyu/MyStudy/Go-learning/B2-Gin-Vue-Admin/assets/image-20250319221708349.png)
+
+
+
+### 2.3 修改用户禁用状态 /user/disable
+
+manager.go
+
+```go
+
+```
+
+1
+
+
+
+### 2.4 修改管理员密码 /user/current/password
+
+manager.go
+
+```go
+
+```
+
+1
+
+
+
+### 2.5 获取在线用户 /user/online
+
+manager.go
+
+```go
+
+```
+
+1
+
+
+
+### 2.6 强制用户下线 /user/offline/:id
+
+manager.go
+
+```go
+
+```
+
+1

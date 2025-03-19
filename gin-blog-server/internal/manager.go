@@ -17,6 +17,7 @@ var (
 	pageAPI     handle.Page     // 页面
 	frontAPI    handle.Front    // 博客前台接口
 	menuAPI     handle.Menu     // 菜单
+	roleAPI     handle.Role     // 角色
 )
 
 func RegisterHandlers(r *gin.Engine) {
@@ -73,6 +74,8 @@ func registerAdminHandler(r *gin.Engine) {
 	{
 		user.GET("/info", userAPI.GetInfo)          // 获取当前用户信息
 		user.GET("/current", userAPI.UpdateCurrent) // 修改当前用户信息
+		user.GET("/list", userAPI.GetList)          // 用户列表
+		user.PUT("", userAPI.Update)                // 更新用户信息
 	}
 
 	// 菜单模块
@@ -90,6 +93,12 @@ func registerAdminHandler(r *gin.Engine) {
 	//{
 	//	resource.GET("/list", resourceAPI.GetTreeList) // 资源列表(树形)
 	//}
+
+	// 角色模块
+	role := auth.Group("/role")
+	{
+		role.GET("/option", roleAPI.GetOption)
+	}
 }
 
 // 博客前台相关接口：大部分不需要登陆，部分需要登陆

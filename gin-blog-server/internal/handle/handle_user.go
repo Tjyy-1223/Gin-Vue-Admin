@@ -17,6 +17,19 @@ type UpdateCurrentUserReq struct {
 	Email    string `json:"email"`
 }
 
+type UserQuery struct {
+	PageQuery
+	LoginType int8   `form:"login_type"`
+	Username  string `form:"username"`
+	Nickname  string `form:"nickname"`
+}
+
+type UpdateUserReq struct {
+	UserAuthId int    `json:"id"`
+	Nickname   string `json:"nickname" binding:"required"`
+	RoleIds    []int  `json:"role_ids"`
+}
+
 // GetInfo 根据 Token 获取用户信息
 func (*User) GetInfo(c *gin.Context) {
 	rdb := GetRDB(c)
@@ -57,5 +70,43 @@ func (*User) UpdateCurrent(c *gin.Context) {
 		ReturnError(c, global.ErrDbOp, err)
 		return
 	}
+	ReturnSuccess(c, nil)
+}
+
+// GetList 获取当前存在的用户列表
+func (*User) GetList(c *gin.Context) {
+	var query UserQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	list, count, err := model.GetUserList(GetDB(c), query.Page, query.Size, query.LoginType, query.Nickname, query.Username)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, PageResult[model.UserAuth]{
+		Size:  query.Size,
+		Page:  query.Page,
+		Total: count,
+		List:  list,
+	})
+}
+
+// Update 更新用户信息：主要是对用户名和用户角色进行更新
+func (*User) Update(c *gin.Context) {
+	var req UpdateUserReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	if err := model.UpdateUserNicknameAndRole(GetDB(c), req.UserAuthId, req.Nickname, req.RoleIds); err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
 	ReturnSuccess(c, nil)
 }

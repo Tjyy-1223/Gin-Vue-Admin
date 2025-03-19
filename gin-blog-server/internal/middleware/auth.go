@@ -124,9 +124,11 @@ func PermissionCheck() gin.HandlerFunc {
 				handle.ReturnError(c, global.ErrDbOp, err)
 				return
 			}
-			if !pass {
+			if !pass { // 不能通过验证
 				handle.ReturnError(c, global.ErrPermission, nil)
 				return
+			} else { // 可以通过验证
+				break
 			}
 		}
 

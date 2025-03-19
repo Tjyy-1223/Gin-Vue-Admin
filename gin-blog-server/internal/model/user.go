@@ -86,3 +86,64 @@ func UpdateUserInfo(db *gorm.DB, id int, nickname, avatar, intro, website string
 	result := db.Select("nickname", "avatar", "intro", "website").Updates(userInfo)
 	return result.Error
 }
+
+// GetUserList 获取当前存在的用户列表
+func GetUserList(db *gorm.DB, page, size int, loginType int8, nickname, username string) (list []UserAuth, total int64, err error) {
+	if loginType != 0 {
+		db = db.Where("login_type = ?", loginType)
+	}
+	if username != "" {
+		db = db.Where("username LIKE ?", "%"+username+"%")
+	}
+
+	result := db.Model(&UserAuth{}).
+		Joins("LEFT JOIN user_info ON user_info.id = user_auth.user_info_id").
+		Where("user_info.nickname LIKE ?", "%"+nickname+"%").
+		Preload("UserInfo").
+		Preload("Roles").
+		Count(&total).
+		Scopes(Paginate(page, size)).
+		Find(&list)
+
+	return list, total, result.Error
+}
+
+// UpdateUserNicknameAndRole 更新用户昵称及角色信息
+func UpdateUserNicknameAndRole(db *gorm.DB, authId int, nickname string, roleIds []int) error {
+	userAuth, err := GetUserAuthInfoById(db, authId)
+	if err != nil {
+		return err
+	}
+
+	userInfo := UserInfo{
+		Model:    Model{ID: userAuth.UserInfoId},
+		Nickname: nickname,
+	}
+
+	// 更新用户信息
+	result := db.Model(&userInfo).Updates(userInfo)
+	if result.Error != nil {
+		return result.Error
+	}
+
+	// 判断，至少有一个角色，一个用户也可以有多个角色
+	if len(roleIds) == 0 {
+		return nil
+	}
+
+	// 更新用户角色, 清空原本的 user_role 关系, 添加新的关系
+	result = db.Where(UserAuthRole{UserAuthId: userAuth.ID}).Delete(UserAuthRole{})
+	if result.Error != nil {
+		return result.Error
+	}
+
+	var userRoles []UserAuthRole
+	for _, id := range roleIds {
+		userRoles = append(userRoles, UserAuthRole{
+			RoleId:     id,
+			UserAuthId: userAuth.ID,
+		})
+	}
+	result = db.Create(&userRoles)
+	return result.Error
+}

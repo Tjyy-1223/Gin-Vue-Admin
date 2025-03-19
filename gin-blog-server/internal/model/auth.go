@@ -234,6 +234,15 @@ func SaveOrUpdateMenu(db *gorm.DB, menu *Menu) error {
 	return result.Error
 }
 
+// GetRoleOption 获取角色配置
+func GetRoleOption(db *gorm.DB) (list []OptionVO, err error) {
+	result := db.Model(&Role{}).Select("id", "name").Find(&list)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return list, nil
+}
+
 // CheckMenuInUse 判断当前菜单是否正在使用中, 传入 menuId
 func CheckMenuInUse(db *gorm.DB, id int) (bool, error) {
 	var count int64
