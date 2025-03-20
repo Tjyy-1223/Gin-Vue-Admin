@@ -72,10 +72,14 @@ func registerAdminHandler(r *gin.Engine) {
 	// 用户模块
 	user := auth.Group("/user")
 	{
-		user.GET("/info", userAPI.GetInfo)          // 获取当前用户信息
-		user.GET("/current", userAPI.UpdateCurrent) // 修改当前用户信息
-		user.GET("/list", userAPI.GetList)          // 用户列表
-		user.PUT("", userAPI.Update)                // 更新用户信息
+		user.GET("/info", userAPI.GetInfo)                           // 获取当前用户信息
+		user.GET("/current", userAPI.UpdateCurrent)                  // 修改当前用户信息
+		user.GET("/list", userAPI.GetList)                           // 用户列表
+		user.PUT("", userAPI.Update)                                 // 更新用户信息
+		user.PUT("/disable", userAPI.UpdateDisable)                  // 修改用户禁用状态
+		user.PUT("/current/password", userAPI.UpdateCurrentPassword) // 修改当前用户密码
+		user.GET("/online", userAPI.GetOnlineList)                   // 获取在线用户
+		user.POST("/offline/:id", userAPI.ForceOffline)              // 强制用户下线
 	}
 
 	// 菜单模块

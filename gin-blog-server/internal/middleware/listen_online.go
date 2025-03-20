@@ -28,7 +28,14 @@ func ListenOnline() gin.HandlerFunc {
 		offlineKey := global.OFFLINE_USER + strconv.Itoa(auth.ID)
 
 		// 判断当前用户是否被强制下线
-		if rdb.Exists(ctx, offlineKey).Val() == 1 {
+		exists, err := rdb.Exists(ctx, offlineKey).Result()
+		if err != nil {
+			// 处理 Redis 操作错误
+			handle.ReturnError(c, global.ErrRedisOp, err)
+			c.Abort()
+			return
+		}
+		if exists == 1 {
 			fmt.Println("用户被强制下线")
 			handle.ReturnError(c, global.ErrForceOffline, nil)
 			c.Abort()
@@ -36,7 +43,13 @@ func ListenOnline() gin.HandlerFunc {
 		}
 
 		// 每次发送请求会更新 Redis 中的在线状态: 重新计算 10 分钟
-		rdb.Set(ctx, onlineKey, auth, 10*time.Minute)
+		err = rdb.Set(ctx, onlineKey, auth, 10*time.Minute).Err()
+		if err != nil {
+			handle.ReturnError(c, global.ErrRedisOp, err)
+			c.Abort()
+			return
+		}
+
 		c.Next()
 	}
 }

@@ -147,3 +147,24 @@ func UpdateUserNicknameAndRole(db *gorm.DB, authId int, nickname string, roleIds
 	result = db.Create(&userRoles)
 	return result.Error
 }
+
+// UpdateUserDisable 更新用户的禁用信息
+func UpdateUserDisable(db *gorm.DB, id int, isDisable bool) error {
+	userAuth := UserAuth{
+		Model:     Model{ID: id},
+		IsDisable: isDisable,
+	}
+
+	result := db.Model(&userAuth).Select("is_disable").Updates(&userAuth)
+	return result.Error
+}
+
+// UpdateUserPassword 修改当前用户的密码
+func UpdateUserPassword(db *gorm.DB, id int, password string) error {
+	userAuth := UserAuth{
+		Model:    Model{ID: id},
+		Password: password,
+	}
+	result := db.Model(&userAuth).Updates(userAuth)
+	return result.Error
+}

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"gin-blog-server/internal/utils"
 	"gorm.io/gorm"
 	"log/slog"
@@ -22,6 +23,10 @@ type UserAuth struct {
 	UserInfoId    int        `json:"user_info_id"`                                      // 关联的用户信息表ID
 	UserInfo      *UserInfo  `json:"info"`                                              // 关联的用户信息
 	Roles         []*Role    `json:"roles" gorm:"many2many:user_auth_role"`             // 用户角色，表示与角色的多对多关系
+}
+
+func (u *UserAuth) MarshalBinary() (data []byte, err error) {
+	return json.Marshal(u)
 }
 
 // Role 代表系统中的角色

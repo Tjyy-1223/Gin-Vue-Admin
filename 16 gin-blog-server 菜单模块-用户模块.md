@@ -828,10 +828,65 @@ func UpdateUserNicknameAndRole(db *gorm.DB, authId int, nickname string, roleIds
 manager.go
 
 ```go
+user.PUT("/disable", userAPI.UpdateDisable) // 修改用户禁用状态
+```
+
+handle/handle_user.go
+
+```go
+type UpdateUserDisableReq struct {
+	UserAuthId int  `json:"id"`
+	IsDisable  bool `json:"is_disable"`
+}
+
+// UpdateDisable 修改用户禁用状态
+func (*User) UpdateDisable(c *gin.Context) {
+	var req UpdateUserDisableReq
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	err := model.UpdateUserDisable(GetDB(c), req.UserAuthId, req.IsDisable)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+	}
+
+	ReturnSuccess(c, nil)
+}
+```
+
+user.go
+
+```go
+// UpdateUserDisable 更新用户的禁用信息
+func UpdateUserDisable(db *gorm.DB, id int, isDisable bool) error {
+	userAuth := UserAuth{
+		Model:     Model{ID: id},
+		IsDisable: isDisable,
+	}
+
+	result := db.Model(&userAuth).Select("is_disable").Updates(&userAuth)
+	return result.Error
+}
 
 ```
 
-1
+首先创建了一个 `UserAuth` 记录，然后将 `is_disable` 属性修改为 `true`，最后使用 `db.Model(&userAuth).Select("is_disable").Updates(&userAuth)` 只更新 `is_disable` 属性。
+
+- **零值问题** ：由于使用了使用了 `Select` 方法指定更新某些字段，所以，如果 `is_disable` 的新值是其类型的零值（对于 `bool` 类型，零值是 `false`），那么该字段会被更新为零值。
+- **否则** ：在不使用 `Select` 方法的情况下，`Updates` 方法默认只会更新结构体中非零值的字段。对于零值字段（如 `bool` 类型的 `false`、`int` 类型的 `0`、`string` 类型的 `""` 等），GORM 会认为这些字段的值没有发生变化，从而不会对其进行更新操作。
+
+**点击相关操作并查看发送的请求：**
+
+![image-20250320102209880](./assets/image-20250320102209880.png)
+
+![image-20250320102233278](./assets/image-20250320102233278.png)
+
+对应的响应和展示页面如下：
+
+![image-20250320102250565](./assets/image-20250320102250565.png)
 
 
 
@@ -840,22 +895,193 @@ manager.go
 manager.go
 
 ```go
-
+user.PUT("/current/password", userAPI.UpdateCurrentPassword) // 修改管理员密码
 ```
 
-1
+handle/handle_user.go
+
+```go
+type UpdateCurrentPasswordReq struct {
+  NewPassword string `json:"new_password" binding:"required,min=4,max=20"`
+  OldPassword string `json:"old_password" binding:"required,min=4,max=20"`
+}
+
+// UpdateCurrentPassword 修改当前用户密码：需要输入旧密码进行验证
+func (*User) UpdateCurrentPassword(c *gin.Context) {
+	var req UpdateCurrentPasswordReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	// 获取当前用户
+	auth, _ := CurrentUserAuth(c)
+
+	// 判断旧密码输入是否正确
+	if !utils.BcryptCheck(req.OldPassword, auth.Password) {
+		ReturnError(c, global.ErrOldPassword, nil)
+		return
+	}
+
+	hashPassword, _ := utils.BcryptHash(req.NewPassword)
+	err := model.UpdateUserPassword(GetDB(c), auth.ID, hashPassword)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	// TODO: 修改完密码后，强制当前用户下线
+
+	ReturnSuccess(c, nil)
+}
+```
+
+user.go
+
+```go
+// UpdateUserPassword 修改当前用户的密码
+func UpdateUserPassword(db *gorm.DB, id int, password string) error {
+	userAuth := UserAuth{
+		Model:    Model{ID: id},
+		Password: password,
+	}
+	result := db.Model(&userAuth).Updates(userAuth)
+	return result.Error
+}
+```
+
+在这段代码中，`db.Model(&userAuth).Updates(userAuth)` 会更新 `UserAuth` 结构体中所有非零值字段，而不是更新所有字段。
+
+- **`db.Model(&userAuth)`**：指定要操作的模型为 `UserAuth`，表明后续的更新操作会针对 `UserAuth` 结构体对应的数据库表进行。
+- **`Updates(userAuth)`**：这是 GORM 用于批量更新记录的方法。它会根据传入的 `userAuth` 结构体中的非零值字段来更新数据库中的对应记录。零值字段（如数字类型的 `0`、字符串类型的 `""`、布尔类型的 `false` 等）不会被更新，除非使用了 `Select` 方法指定更新某些字段或者配置了 `gorm` 的其他参数来强制更新零值字段。
+
+点击相关操作并查看发送的请求：
+
+![image-20250320105830000](./assets/image-20250320105830000.png)
+
+![image-20250320105918590](./assets/image-20250320105918590.png)
+
+对应的响应和展示页面正常，提示修改成功。
+
+注意：有个问题，密码好像目前是明文传输，点击 Payload 可以看到用户输入的密码，感觉这个地方是有优化点可以去思考的。
+
+后续可以深入研究。
 
 
 
 ### 2.5 获取在线用户 /user/online
 
-manager.go
+在线用户通常被存放在 redis 中，而什么时候存放的呢，这个就是 middleware 中的 linsenOnline 起到了作用，起代码如下：
 
 ```go
+// ListenOnline 监听在线状态
+// 每次请求时检查用户是否被强制下线，并更新用户的在线状态，确保用户的在线状态在一定时间内保持有效。
+func ListenOnline() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := context.Background()
+		rdb := c.MustGet(global.CTX_RDB).(*redis.Client)
+
+		auth, err := handle.CurrentUserAuth(c)
+		if err != nil {
+			handle.ReturnError(c, global.ErrDbOp, err)
+			return
+		}
+
+		onlineKey := global.ONLINE_USER + strconv.Itoa(auth.ID)
+		offlineKey := global.OFFLINE_USER + strconv.Itoa(auth.ID)
+
+		// 判断当前用户是否被强制下线
+		exists, err := rdb.Exists(ctx, offlineKey).Result()
+		if err != nil {
+			// 处理 Redis 操作错误
+			handle.ReturnError(c, global.ErrRedisOp, err)
+			c.Abort()
+			return
+		}
+		if exists == 1 {
+			fmt.Println("用户被强制下线")
+			handle.ReturnError(c, global.ErrForceOffline, nil)
+			c.Abort()
+			return
+		}
+
+		// 每次发送请求会更新 Redis 中的在线状态: 重新计算 10 分钟
+		err = rdb.Set(ctx, onlineKey, auth, 10*time.Minute).Err()
+		if err != nil {
+			handle.ReturnError(c, global.ErrRedisOp, err)
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
 
 ```
 
-1
+这段代码定义了一个名为 `ListenOnline` 的 Gin 中间件函数，其作用是在每次请求时检查用户的在线状态。
+
++ 它会先从上下文中获取 Redis 客户端，再解析当前用户的认证信息，接着通过检查 Redis 中是否存在强制下线的标记来判断用户是否被强制下线，
++ 若被强制下线则返回错误并终止请求；
++ 若未被强制下线，则更新用户在 Redis 中的在线状态，设置有效期为 10 分钟，之后继续处理后续的请求逻辑。
+
+manager.go
+
+```go
+user.GET("/online", userAPI.GetOnlineList)                   // 获取在线用户
+```
+
+handle/handle_user.go
+
+```go
+// GetOnlineList 查询当前的在线用户，主要是 redis 操作；
+func (*User) GetOnlineList(c *gin.Context) {
+	keyword := c.Query("keyword")
+
+	rdb := GetRDB(c)
+
+	onlineList := make([]model.UserAuth, 0)
+	// 查询redis中的键，模糊查询： "online:*"
+	keys := rdb.Keys(rctx, global.ONLINE_USER+"*").Val()
+
+	for _, key := range keys {
+		var auth model.UserAuth
+		val := rdb.Get(rctx, key).Val() // 从 redis 中获取对应的用户
+		json.Unmarshal([]byte(val), &auth)
+
+		// 如果关键词存在，但是该用户的用户名和名称不包含关键词，省略该用户
+		if keyword != "" &&
+			!strings.Contains(auth.Username, keyword) &&
+			!strings.Contains(auth.UserInfo.Nickname, keyword) {
+			continue
+		}
+
+		onlineList = append(onlineList, auth)
+	}
+
+	// 根据上次登录时间进行排序
+	sort.Slice(onlineList, func(i, j int) bool {
+		return onlineList[i].LastLoginTime.Unix() > onlineList[j].LastLoginTime.Unix()
+	})
+
+	ReturnSuccess(c, onlineList)
+}
+
+```
+
+这段代码定义了 `User` 结构体的 `GetOnlineList` 方法，用于处理获取在线用户列表的请求
+
+1. 它从 Redis 中查询以 `online:` 开头的键，获取对应的用户信息并反序列化
+2. 根据请求中的关键词进行筛选，将符合条件的用户添加到列表
+3. 再按用户的上次登录时间降序排序，最后将结果作为成功响应返回给客户端。
+
+点击相关操作并查看发送的请求：
+
+![image-20250320134013360](./assets/image-20250320134013360.png)
+
+对应的响应和展示页面如下：
+
+![image-20250320134121427](./assets/image-20250320134121427.png)
 
 
 
@@ -864,7 +1090,84 @@ manager.go
 manager.go
 
 ```go
-
+user.POST("/offline/:id", userAPI.ForceOffline)              // 强制用户下线
 ```
 
-1
+handle/handle_user.go
+
+```go
+// ForceOffline 强制用户离线
+func (*User) ForceOffline(c *gin.Context) {
+	id := c.Param("id")
+	uid, err := strconv.Atoi(id)
+	if err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	auth, err := CurrentUserAuth(c)
+	if err != nil {
+		ReturnError(c, global.ErrUserAuth, err)
+		return
+	}
+
+	// 不能离线自己
+	if auth.ID == uid {
+		ReturnError(c, global.ErrForceOfflineSelf, nil)
+		return
+	}
+
+	rdb := GetRDB(c)
+	onlineKey := global.ONLINE_USER + strconv.Itoa(uid)
+	offlineKey := global.OFFLINE_USER + strconv.Itoa(uid)
+
+	rdb.Del(rctx, onlineKey)
+	rdb.Set(rctx, offlineKey, auth, time.Hour)
+
+	ReturnSuccess(c, "强制离线成功")
+}
+```
+
+这段代码定义了 `User` 结构体的 `ForceOffline` 方法，用于处理强制用户离线的请求。
+
+1. 它首先从请求参数中获取要强制离线的用户 ID 并转换为整数类型，若转换失败则返回请求错误。
+2. 接着获取当前请求用户的认证信息，若获取失败则返回用户认证错误。
+3. 然后检查要离线的用户是否为当前用户自身，若是则返回不能离线自己的错误。
+4. 之后获取 Redis 客户端，构建在线和离线状态的 Redis 键，将该用户的在线状态键从 Redis 中删除，并设置一个有效期为 1 小时的离线状态键
+5. 最后返回强制离线成功的响应。
+
+设置好之后，下面的离线操作交给下一个请求到来时，触发是 middleware 中的 linsenOnline，然后会执行如下的流程：
+
+```go
+// 判断当前用户是否被强制下线
+exists, err := rdb.Exists(ctx, offlineKey).Result()
+if err != nil {
+  // 处理 Redis 操作错误
+  handle.ReturnError(c, global.ErrRedisOp, err)
+  c.Abort()
+  return
+}
+
+if exists == 1 {
+  fmt.Println("用户被强制下线")
+  handle.ReturnError(c, global.ErrForceOffline, nil)
+  c.Abort()
+  return
+}
+```
+
+之后，该用户一个小时内不能进行登陆操作。
+
+点击相关操作并查看发送的请求：
+
+![image-20250320141018796](./assets/image-20250320141018796.png)
+
+![image-20250320141043573](./assets/image-20250320141043573.png)
+
+对应的响应和展示页面如下：
+
+![image-20250320141108471](./assets/image-20250320141108471.png)
+
+如果有其他用户的话，可以尝试将其他用户进行下线。
+
+需要注意的是，强制用户下线的操作，只有管理员可以进行。
