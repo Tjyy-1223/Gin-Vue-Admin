@@ -18,6 +18,7 @@ var (
 	frontAPI    handle.Front    // 博客前台接口
 	menuAPI     handle.Menu     // 菜单
 	roleAPI     handle.Role     // 角色
+	categoryAPI handle.Category // 分类
 )
 
 func RegisterHandlers(r *gin.Engine) {
@@ -80,6 +81,15 @@ func registerAdminHandler(r *gin.Engine) {
 		user.PUT("/current/password", userAPI.UpdateCurrentPassword) // 修改当前用户密码
 		user.GET("/online", userAPI.GetOnlineList)                   // 获取在线用户
 		user.POST("/offline/:id", userAPI.ForceOffline)              // 强制用户下线
+	}
+
+	// 分类模块
+	category := auth.Group("/category")
+	{
+		category.GET("/list", categoryAPI.GetList)     // 分类 列表
+		category.POST("", categoryAPI.SaveOrUpdate)    // 新增/编辑分类
+		category.DELETE("", categoryAPI.Delete)        // 删除分类
+		category.GET("/option", categoryAPI.GetOption) // 分类选项列表
 	}
 
 	// 菜单模块
