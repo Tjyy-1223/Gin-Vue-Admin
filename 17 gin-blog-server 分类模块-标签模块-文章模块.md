@@ -310,6 +310,8 @@ type OptionVO struct {
 }
 ```
 
+
+
 ### 1.5 补充
 
 对于博客前台相关接口，我们也需要进行对应的接口补充：
@@ -372,16 +374,85 @@ tag.GET("/list", tagAPI.GetList)     // 标签列表
 handle/handle_tag.go
 
 ```go
+type Tag struct{}
+
+type AddOrEditTagReq struct {
+	ID   int    `json:"id"`
+	Name string `json:"name" binding:"required"`
+}
+
+// GetList 获取标签列表
+// @Summary 获取标签列表
+// @Description 根据条件查询获取标签列表
+// @Tags Tag
+// @Param page_size query int false "当前页数"
+// @Param page_num query int false "每页条数"
+// @Param keyword query string false "搜索关键字"
+// @Accept json
+// @Produce json
+// @Success 0 {object} Response[PageResult[model.TagVO]] "成功"
+// @Security ApiKeyAuth
+// @Router /tag/list [get]
+func (*Tag) GetList(c *gin.Context) {
+	var query PageQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	data, total, err := model.GetTagList(GetDB(c), query.Page, query.Size, query.Keyword)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, PageResult[model.TagVO]{
+		Total: total,
+		List:  data,
+		Size:  query.Size,
+		Page:  query.Page,
+	})
+}
 
 ```
 
 model/tag.go
 
 ```go
+type TagVO struct {
+	ID        uint      `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 
+	Name         string `json:"name"`
+	ArticleCount int    `json:"article_count"`
+}
+
+// GetTagList 获取标签列表
+func GetTagList(db *gorm.DB, page, size int, keyword string) (list []TagVO, total int64, err error) {
+	db = db.Table("tag t").
+		Joins("LEFT JOIN article_tag at ON t.id = at.tag_id").
+		Select("t.id", "t.name", "COUNT(at.article_id) AS article_count", "t.created_at", "t.updated_at")
+
+	if keyword != "" {
+		db = db.Where("name LIKE ?", "%"+keyword+"%")
+	}
+
+	result := db.Group("t.id").Order("t.updated_at DESC").
+		Count(&total).
+		Scopes(Paginate(page, size)).
+		Find(&list)
+	return list, total, result.Error
+}
 ```
 
 对应的请求和响应如下：
+
+![image-20250327175304608](./assets/image-20250327175304608.png)
+
+<img src="./assets/image-20250327175324003.png" alt="image-20250327175324003"  />
+
+<img src="./assets/image-20250327175344609.png" alt="image-20250327175344609" style="zoom:67%;" />
 
 
 
@@ -397,15 +468,80 @@ handle/handle_tag.go
 
 ```go
 
+type AddOrEditTagReq struct {
+	ID   int    `json:"id"`
+	Name string `json:"name" binding:"required"`
+}
+
+// SaveOrUpdate 添加或者修改标签
+// @Summary 添加或修改标签
+// @Description 添加或修改标签
+// @Tags Tag
+// @Param form body AddOrEditTagReq true "添加或修改标签"
+// @Accept json
+// @Produce json
+// @Success 0 {object} Response[model.Tag]
+// @Security ApiKeyAuth
+// @Router /tag [post]
+func (*Tag) SaveOrUpdate(c *gin.Context) {
+	var form AddOrEditTagReq
+	if err := c.ShouldBindJSON(&form); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	tag, err := model.SaveOrUpdateTag(GetDB(c), form.ID, form.Name)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, tag)
+}
+
 ```
+
+绑定形式：
+
++ **JSON 标签**：`ShouldBindJSON` 会依据结构体字段的 `json` 标签来匹配 JSON 数据中的字段名。比如在你给出的 `AddOrEditTagReq` 结构体里，`ID` 字段对应 JSON 数据里的 `"id"`，`Name` 字段对应 `"name"`。
++ **无标签情况**：若结构体字段没有 `json` 标签，`ShouldBindJSON` 会使用字段名的小写形式进行匹配。
 
 model/tag.go
 
 ```go
+// SaveOrUpdateTag 添加或者修改标签
+func SaveOrUpdateTag(db *gorm.DB, id int, name string) (*Tag, error) {
+	tag := Tag{
+		Model: Model{ID: id},
+		Name:  name,
+	}
 
+	var result *gorm.DB
+	if id > 0 {
+		result = db.Updates(&tag)
+	} else {
+		result = db.Create(&tag)
+	}
+
+	return &tag, result.Error
+}
 ```
 
 对应的请求和响应如下：
+
+<img src="./assets/image-20250327174016436.png" alt="image-20250327174016436" style="zoom: 67%;" />
+
+![image-20250327174100630](/Users/tianjiangyu/MyStudy/Go-learning/B2-Gin-Vue-Admin/assets/image-20250327174100630.png)
+
+对于新建一个新的标签，可以看到其对应的 AddOrEditTagReq 中  ID 为 0，之后进行的操作为 result = db.Updates(&tag)
+
+同时我们尝试编辑一下 Tag 标签的名称，如下：
+
+<img src="./assets/image-20250327174931600.png" alt="image-20250327174931600" style="zoom:67%;" />
+
+![image-20250327175108504](./assets/image-20250327175108504.png)
+
+可以看到其对应的 AddOrEditTagReq 中  ID 为 1，之后进行的操作为 result = db.Updates(&tag)，从而将标签进行删除。
 
 
 
@@ -420,16 +556,53 @@ tag.DELETE("", tagAPI.Delete)        // 删除标签
 handle/handle_tag.go
 
 ```go
+// Delete 删除标签（可以批量操作）
+// TODO: 删除行为, 添加强制删除: 有关联数据则将删除关联数据
+// @Summary 删除标签（批量）
+// @Description 根据 ID 数组删除标签
+// @Tags Tag
+// @Param ids body []int true "标签 ID 数组"
+// @Accept json
+// @Produce json
+// @Success 0 {object} Response[int]
+// @Security ApiKeyAuth
+// @Router /tag [delete]
+func (*Tag) Delete(c *gin.Context) {
+	var ids []int
+	if err := c.ShouldBindJSON(&ids); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
 
-```
+	db := GetDB(c)
+	// 检查标签下面是否有文章
+	count, err := model.Count(db, &model.ArticleTag{}, "tag_id in ?", ids)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
 
-model/tag.go
+	if count > 0 {
+		ReturnError(c, global.ErrTagHasArt, nil)
+		return
+	}
 
-```go
-
+	result := db.Delete(model.Tag{}, "id in ?", ids)
+	if result.Error != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, result.RowsAffected)
+}
 ```
 
 对应的请求和响应如下：
+
+![image-20250327175425379](./assets/image-20250327175425379.png)
+
+![image-20250327180139789](./assets/image-20250327180139789.png)
+
+可以看到，标签被成功删除。
 
 
 
@@ -444,18 +617,79 @@ tag.GET("/option", tagAPI.GetOption) // 标签选项列表
 handle/handle_tag.go
 
 ```go
-
+// GetOption 获取标签选项列表
+// @Summary 获取标签选项列表
+// @Description 获取标签选项列表
+// @Tags Tag
+// @Accept json
+// @Produce json
+// @Success 0 {object} Response[model.OptionVO]
+// @Security ApiKeyAuth
+// @Router /tag/option [get]
+func (*Tag) GetOption(c *gin.Context) {
+	list, err := model.GetTagOption(GetDB(c))
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, list)
+}
 ```
 
 model/tag.go
 
 ```go
-
+// GetTagOption 获取标签选项列表
+func GetTagOption(db *gorm.DB) ([]OptionVO, error) {
+	list := make([]OptionVO, 0)
+	result := db.Model(&Tag{}).Select("id", "name").Find(&list)
+	return list, result.Error
+}
 ```
 
 对应的请求和响应如下：
 
+![image-20250327180219370](./assets/image-20250327180219370.png)
 
+![image-20250327180243294](./assets/image-20250327180243294.png)
+
+得到的响应为分类的 ID-NAME 所构成的组合：
+
+```go
+type OptionVO struct {
+	ID   int    `json:"value"`
+	Name string `json:"name"`
+}
+```
+
+
+
+### 2.5 补充
+
+对于博客前台相关接口，我们也需要进行对应的接口补充：
+
+首先在 manager.go 中补充如下操作：
+
+```go
+tag := base.Group("/tag")
+{
+  tag.GET("/list", frontAPI.GetTagList) // 前台标签列表
+}
+```
+
+同时在 handle_front.go 中进行补齐：
+
+```go
+// GetTagList 查询标签列表
+func (*Front) GetTagList(c *gin.Context) {
+	list, _, err := model.GetTagList(GetDB(c), 1, 1000, "")
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, list)
+}
+```
 
 
 
@@ -513,4 +747,3 @@ model/tag.go
 
 
 
-### 2.5 补充

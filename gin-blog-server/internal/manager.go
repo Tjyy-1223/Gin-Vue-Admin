@@ -138,6 +138,11 @@ func registerBlogHandler(r *gin.Engine) {
 		category.GET("/list", frontAPI.GetCategoryList) // 前台分类列表
 	}
 
+	tag := base.Group("/tag")
+	{
+		tag.GET("/list", frontAPI.GetTagList) // 前台标签列表
+	}
+
 	// 需要登录才能进行的操作
 	base.Use(middleware.JWTAuth())
 	{

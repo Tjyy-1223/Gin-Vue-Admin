@@ -32,3 +32,13 @@ func (*Front) GetCategoryList(c *gin.Context) {
 	}
 	ReturnSuccess(c, list)
 }
+
+// GetTagList 查询标签列表
+func (*Front) GetTagList(c *gin.Context) {
+	list, _, err := model.GetTagList(GetDB(c), 1, 1000, "")
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, list)
+}
