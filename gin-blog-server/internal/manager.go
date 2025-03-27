@@ -19,6 +19,7 @@ var (
 	menuAPI     handle.Menu     // 菜单
 	roleAPI     handle.Role     // 角色
 	categoryAPI handle.Category // 分类
+	tagAPI      handle.Tag      // 标签
 )
 
 func RegisterHandlers(r *gin.Engine) {
@@ -92,6 +93,15 @@ func registerAdminHandler(r *gin.Engine) {
 		category.GET("/option", categoryAPI.GetOption) // 分类选项列表
 	}
 
+	// 标签模块
+	tag := auth.Group("/tag")
+	{
+		tag.GET("/list", tagAPI.GetList)     // 标签列表
+		tag.POST("", tagAPI.SaveOrUpdate)    // 新增/编辑标签
+		tag.DELETE("", tagAPI.Delete)        // 删除标签
+		tag.GET("/option", tagAPI.GetOption) // 标签选项列表
+	}
+
 	// 菜单模块
 	menu := auth.Group("/menu")
 	{
@@ -122,6 +132,11 @@ func registerBlogHandler(r *gin.Engine) {
 	base.GET("/about", blogInfoAPI.GetAbout) // 获取关于我
 	base.GET("/home", frontAPI.GetHomeInfo)  // 前台首页
 	base.GET("/page", pageAPI.GetList)       // 前台页面
+
+	category := base.Group("/category")
+	{
+		category.GET("/list", frontAPI.GetCategoryList) // 前台分类列表
+	}
 
 	// 需要登录才能进行的操作
 	base.Use(middleware.JWTAuth())

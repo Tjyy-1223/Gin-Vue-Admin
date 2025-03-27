@@ -310,6 +310,33 @@ type OptionVO struct {
 }
 ```
 
+### 1.5 补充
+
+对于博客前台相关接口，我们也需要进行对应的接口补充：
+
+首先在 manager.go 中补充如下操作：
+
+```go
+category := base.Group("/category")
+{
+  category.GET("/list", frontAPI.GetCategoryList) // 前台分类列表
+}
+```
+
+同时在 handle_front.go 中进行补齐：
+
+```go
+// GetCategoryList 查询分类列表
+func (*Front) GetCategoryList(c *gin.Context) {
+  list, _, err := model.GetCategoryList(GetDB(c), 1, 1000, "")
+  if err != nil {
+    ReturnError(c, global.ErrDbOp, err)
+    return
+  }
+  ReturnSuccess(c, list)
+}
+```
+
 
 
 ## 2 标签模块
@@ -332,27 +359,105 @@ tag := auth.Group("/tag")
 }
 ```
 
+标签模块的思路与分类模块很像，其主要的功能如下：
 
+### 2.1 标签列表 /tag/list
 
 manager.go
 
 ```go
-
+tag.GET("/list", tagAPI.GetList)     // 标签列表
 ```
 
-handle/handle_catogory.go
+handle/handle_tag.go
 
 ```go
 
 ```
 
-model/catogory.go
+model/tag.go
 
 ```go
 
 ```
 
 对应的请求和响应如下：
+
+
+
+### 2.2 新增/编辑标签 /tag POST
+
+manager.go
+
+```go
+tag.POST("", tagAPI.SaveOrUpdate)    // 新增/编辑标签
+```
+
+handle/handle_tag.go
+
+```go
+
+```
+
+model/tag.go
+
+```go
+
+```
+
+对应的请求和响应如下：
+
+
+
+### 2.3 删除标签 /tag DELETE
+
+manager.go
+
+```go
+tag.DELETE("", tagAPI.Delete)        // 删除标签
+```
+
+handle/handle_tag.go
+
+```go
+
+```
+
+model/tag.go
+
+```go
+
+```
+
+对应的请求和响应如下：
+
+
+
+### 2.4 标签选项列表 /tag/option
+
+manager.go
+
+```go
+tag.GET("/option", tagAPI.GetOption) // 标签选项列表
+```
+
+handle/handle_tag.go
+
+```go
+
+```
+
+model/tag.go
+
+```go
+
+```
+
+对应的请求和响应如下：
+
+
+
+
 
 
 
@@ -383,3 +488,29 @@ articles := auth.Group("/article")
    articles.POST("/import", articleAPI.Import)               // 导入文章
 }
 ```
+
+
+
+manager.go
+
+```go
+
+```
+
+handle/handle_tag.go
+
+```go
+
+```
+
+model/tag.go
+
+```go
+
+```
+
+对应的请求和响应如下：
+
+
+
+### 2.5 补充
