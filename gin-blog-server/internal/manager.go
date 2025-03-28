@@ -20,6 +20,7 @@ var (
 	roleAPI     handle.Role     // 角色
 	categoryAPI handle.Category // 分类
 	tagAPI      handle.Tag      // 标签
+	articleAPI  handle.Article  // 文章
 )
 
 func RegisterHandlers(r *gin.Engine) {
@@ -110,6 +111,13 @@ func registerAdminHandler(r *gin.Engine) {
 		menu.POST("", menuAPI.SaveOrUpdate)         // 新增/编辑菜单
 		menu.DELETE("/:id", menuAPI.Delete)         // 删除菜单
 		menu.GET("/option", menuAPI.GetOption)      // 菜单选项列表（树形）
+	}
+
+	// 文章模块
+	articles := auth.Group("/article")
+	{
+		articles.GET("/list", articleAPI.GetList)  // 文章列表
+		articles.POST("", articleAPI.SaveOrUpdate) // 新增/编辑文章
 	}
 
 	// 资源模块

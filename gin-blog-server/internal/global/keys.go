@@ -30,5 +30,6 @@ const (
 // Config Key
 
 const (
-	CONFIG_ABOUT = "about"
+	CONFIG_ARTICLE_COVER = "article_cover"
+	CONFIG_ABOUT         = "about"
 )

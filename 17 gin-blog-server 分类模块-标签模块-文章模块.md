@@ -725,25 +725,480 @@ articles := auth.Group("/article")
 
 
 
+### 3.1 文章列表获取 /article/list
+
+manager.go
+
+```go
+var (
+	// 后端管理系统接口
+	...
+	articleAPI  handle.Article  // 文章
+)
+
+
+// 文章模块
+articles := auth.Group("/article")
+{
+  articles.GET("/list", articleAPI.GetList) // 文章列表
+}
+```
+
+handle/handle_article.go
+
+```go
+package handle
+
+import (
+	"gin-blog-server/internal/global"
+	"gin-blog-server/internal/model"
+	"github.com/gin-gonic/gin"
+	"strconv"
+)
+
+type Article struct{}
+
+// ArticleQuery 文章查询输入请求
+// TODO: 添加对标签数组的查询
+type ArticleQuery struct {
+	PageQuery
+	Title      string `form:"title"`
+	CategoryId int    `form:"category_id"`
+	TagId      int    `form:"tag_id"`
+	Type       int    `form:"type"`
+	Status     int    `form:"status"`
+	IsDelete   *bool  `form:"is_delete"`
+}
+
+type ArticleVO struct {
+	model.Article
+	// gorm:"-" 是一个标签，它的主要作用是告诉 GORM 忽略结构体中的某个字段，使其在数据库操作（如创建表、插入数据、查询数据等）中不被考虑。
+	// GORM 默认会将结构体名转换为蛇形命名法（snake_case）并以复数形式作为数据库表名。
+	LikeCount    int `json:"like_count" gorm:"-"`
+	ViewCount    int `json:"view_count" gorm:"-"`
+	CommentCount int `json:"comment_count" gorm:"-"`
+}
+
+// GetList 获取文章列表
+func (*Article) GetList(c *gin.Context) {
+	var query ArticleQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	db := GetDB(c)
+	rdb := GetRDB(c)
+
+	list, total, err := model.GetArticleList(db, query.Page, query.Size, query.Title, query.IsDelete, query.Status, query.Type, query.CategoryId, query.TagId)
+	if err != nil || list == nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	// 获取所有文章的点赞数
+	likeCountMap := rdb.HGetAll(rctx, global.ARTICLE_LIKE_COUNT).Val()
+	// 获取所有文章的观看量，并排序
+	viewCountZ := rdb.ZRangeWithScores(rctx, global.ARTICLE_VIEW_COUNT, 0, -1).Val()
+
+	viewCountMap := make(map[int]int)
+	for _, article := range viewCountZ {
+		id, _ := strconv.Atoi(article.Member.(string))
+		viewCountMap[id] = int(article.Score)
+	}
+
+	data := make([]ArticleVO, 0)
+	for _, article := range list {
+		likeCount, _ := strconv.Atoi(likeCountMap[strconv.Itoa(article.ID)])
+		data = append(data, ArticleVO{
+			Article:   article,
+			LikeCount: likeCount,
+			ViewCount: viewCountMap[article.ID],
+		})
+	}
+
+	ReturnSuccess(c, PageResult[ArticleVO]{
+		Size:  query.Size,
+		Page:  query.Page,
+		Total: total,
+		List:  data,
+	})
+}
+```
+
+model/article.go
+
+```go
+// GetArticleList 获取文章列表
+func GetArticleList(db *gorm.DB, page, size int, title string, isDelete *bool, status, typ, categoryId, tagId int) (list []Article, total int64, err error) {
+	db = db.Model(Article{})
+
+	if title != "" {
+		db = db.Where("title LIKE ?", "%"+title+"%")
+	}
+	if isDelete != nil {
+		db = db.Where("is_delete", *isDelete)
+	}
+	if status != 0 {
+		db = db.Where("status", status)
+	}
+	if categoryId != 0 {
+		db = db.Where("category_id", categoryId)
+	}
+	if typ != 0 {
+		db = db.Where("type", typ)
+	}
+
+	db = db.Preload("Category").Preload("Tags").
+		Joins("LEFT JOIN article_tag ON article_tag.article_id = article.id")
+	// .Group("id") // 去重（这行似乎没有作用，先注释掉）
+
+	if tagId != 0 {
+		db = db.Where("tag_id = ?", tagId)
+	}
+
+	result := db.Count(&total).
+		Scopes(Paginate(page, size)).
+		Order("is_top DESC, article.id DESC").
+		Find(&list)
+	return list, total, result.Error
+}
+```
+
+**我们先去完成功能  3.2 文章新增/编辑  /article POST，有了文章之后，再来测试文章列表获取的功能是否可以正常使用。**
+
+对应的请求和响应如下：
+
+![image-20250328122047990](./assets/image-20250328122047990.png)
+
+![image-20250328122106345](./assets/image-20250328122106345.png)
+
+这里需要注意的是，在获取文章列表时，我们使用的 sql 为：
+
+```go
+db = db.Preload("Category").Preload("Tags").
+		Joins("LEFT JOIN article_tag ON article_tag.article_id = article.id").
+		Group("id") // 去重
+```
+
+其中：
+
+- `Preload("Category")` 和 `Preload("Tags")` 预加载 `Category` 和 `Tags` 关联数据。
+- `LEFT JOIN article_tag ON article_tag.article_id = article.id`
+   这是一个 `LEFT JOIN`，`article_tag` 可能有多条记录，如果 `article` 关联了多个 `Tags`，则 `article` 会被重复返回。
+- `Group("id")`
+   这个 `GROUP BY id` 用来去重，让结果只保留 `article.id` 唯一的记录。
+
+**如果没有 Group("id") 的存在，则会获取到两条同样的 Article 信息。**
+
+`LEFT JOIN` 连接 `article_tag` 表时，如果 `article` 关联了多个 `tags`，则 `article` 会被重复返回。例如：
+
+| article.id | article.title | article.content | article_tag.tag_id |
+| ---------- | ------------- | --------------- | ------------------ |
+| 1          | "Gorm"        | "Go ORM"        | 101                |
+| 1          | "Gorm"        | "Go ORM"        | 102                |
+
+在 `SQL` 结果集中，`article.id=1` 被返回了两次，因为 `article_tag` 表中有两条数据，导致 `JOIN` 结果中 `article` 被**重复**。
+
+添加 `GROUP BY id` 后，SQL 只保留每个 `article.id` 的**一条记录**，避免重复返回。
+
+但是需要注意：
+
+- `GROUP BY` 可能导致 `SELECT` 语句中的其他字段（如 `Tags`）变得不确定。
+- `Gorm` 的 `Preload("Tags")` 会在 `GROUP BY` 后**额外查询** `Tags`，所以不会影响 `Tags` 的完整性。
+
+
+
+### 3.2 文章新增/编辑  /article POST
+
+manager.go
+
+```go
+articles.POST("", articleAPI.SaveOrUpdate)                // 新增/编辑文章
+```
+
+handle/handle_article.go
+
+```go
+// AddOrEditArticleReq 新增或者编辑文章的请求
+type AddOrEditArticleReq struct {
+	ID          int    `json:"id"`
+	Title       string `json:"title" binding:"required"`
+	Desc        string `json:"desc"`
+	Content     string `json:"content" binding:"required"`
+	Img         string `json:"img"`
+	Type        int    `json:"type" binding:"required,min=1,max=3"`   // 类型: 1-原创 2-转载 3-翻译
+	Status      int    `json:"status" binding:"required,min=1,max=3"` // 类型: 1-公开 2-私密 3-评论可见
+	IsTop       bool   `json:"is_top"`
+	OriginalUrl string `json:"original_url"`
+
+	TagNames     []string `json:"tag_names"`
+	CategoryName string   `json:"category_name"`
+}
+
+// SaveOrUpdate 新增或者编辑文章
+func (*Article) SaveOrUpdate(c *gin.Context) {
+	var req AddOrEditArticleReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	db := GetDB(c)
+	auth, _ := CurrentUserAuth(c)
+
+	if req.Img == "" {
+		req.Img = model.GetConfig(db, global.CONFIG_ARTICLE_COVER) // 默认图片
+	}
+
+	article := model.Article{
+		Model:       model.Model{ID: req.ID},
+		Title:       req.Title,
+		Desc:        req.Desc,
+		Content:     req.Content,
+		Img:         req.Img,
+		Type:        req.Type,
+		Status:      req.Status,
+		OriginalUrl: req.OriginalUrl,
+		IsTop:       req.IsTop,
+		UserId:      auth.UserInfoId,
+	}
+
+	err := model.SaveOrUpdateArticle(db, &article, req.CategoryName, req.TagNames)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, article)
+}
+```
+
+model/article.go
+
+```go
+// SaveOrUpdateArticle 新增/编辑文章, 同时根据 分类名称, 标签名称 维护关联表
+func SaveOrUpdateArticle(db *gorm.DB, article *Article, categoryName string, tagNames []string) error {
+	// 由于要操作多个数据库表，所以要开启事务
+	return db.Transaction(func(tx *gorm.DB) error {
+		// 分类不存在则创建
+		category := Category{Name: categoryName}
+		result := db.Model(&Category{}).Where("name", categoryName).FirstOrCreate(&category)
+		if result.Error != nil {
+			return result.Error
+		}
+
+		// 设置文章的分类
+		article.CategoryId = category.ID
+
+		// 先 添加/更新 文章, 获取到其 ID
+		if article.ID == 0 {
+			result = db.Create(article)
+		} else {
+			result = db.Model(article).Where("id", article.ID).Updates(article)
+		}
+		if result.Error != nil {
+			return result.Error
+		}
+
+		// 清空文章标签关联
+		result = db.Delete(&ArticleTag{}, "article_id", article.ID)
+		if result.Error != nil {
+			return result.Error
+		}
+
+		// 并重新开始新建 文章-标签 关联
+		var articleTags []ArticleTag
+		for _, tagName := range tagNames {
+			// 标签不存在则创建
+			tag := Tag{Name: tagName}
+			result := db.Model(&Tag{}).Where("name", tagName).FirstOrCreate(&tag)
+			if result.Error != nil {
+				return result.Error
+			}
+			articleTags = append(articleTags, ArticleTag{
+				ArticleId: article.ID,
+				TagId:     tag.ID,
+			})
+		}
+
+		result = db.Create(&articleTags)
+		return result.Error
+	})
+}
+```
+
+为了测试上述功能，我们首先要对数据库中的 config 表进行补全，通过config.sql 导入即可，补全后的 config 内容如如下，我们可以从中获取默认的头像设置。
+
+![image-20250328120133017](./assets/image-20250328120133017.png)
+
+对应的请求和响应如下：
+
+1. 首先编写文章并选择文章分类、文章标签等信息
+
+![image-20250328121243837](./assets/image-20250328121243837.png)
+
+![image-20250328121332804](./assets/image-20250328121332804.png)
+
+2. 点击确认之后查看发送的请求：
+
+<img src="./assets/image-20250328121521147.png" alt="image-20250328121521147"  />
+
+请求中携带的 body 字段如下：
+
+![image-20250328121557301](./assets/image-20250328121557301.png)
+
+对应的返回信息如下，证明成功插入了一篇新的文章：
+
+![image-20250328121809120](./assets/image-20250328121809120.png)
+
+之后，我们可以到 3.1 文章列表获取中查看文章内容。
+
+
+
+### 3.3 文章置顶更新  PUT /article/top
+
 manager.go
 
 ```go
 
 ```
 
-handle/handle_tag.go
+handle/handle_article.go
 
 ```go
 
 ```
 
-model/tag.go
+model/article.go
 
 ```go
 
 ```
 
 对应的请求和响应如下：
+
+
+
+### 3.4 文章详情获取 GET /article/:id
+
+manager.go
+
+```go
+
+```
+
+handle/handle_article.go
+
+```go
+
+```
+
+model/article.go
+
+```go
+
+```
+
+对应的请求和响应如下：
+
+
+
+### 3.5 文件软删除 PUT /article/soft
+
+manager.go
+
+```go
+
+```
+
+handle/handle_article.go
+
+```go
+
+```
+
+model/article.go
+
+```go
+
+```
+
+对应的请求和响应如下：
+
+
+
+### 3.6 文章物理删除 DELETE /article
+
+manager.go
+
+```go
+
+```
+
+handle/handle_article.go
+
+```go
+
+```
+
+model/article.go
+
+```go
+
+```
+
+对应的请求和响应如下：
+
+
+
+### 3.7 文章导出 POST /article/export
+
+manager.go
+
+```go
+
+```
+
+handle/handle_article.go
+
+```go
+
+```
+
+model/article.go
+
+```go
+
+```
+
+对应的请求和响应如下：
+
+
+
+### 3.8 文章导入 POST /article/import
+
+manager.go
+
+```go
+
+```
+
+handle/handle_article.go
+
+```go
+
+```
+
+model/article.go
+
+```go
+
+```
+
+对应的请求和响应如下：
+
+
 
 
 
