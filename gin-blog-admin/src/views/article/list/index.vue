@@ -20,8 +20,7 @@
                 批量导出
             </NButton>
             <div class="inline-block">
-                <NUpload action="/api/article/import" :show-file-list="false" multiple @before-upload="beforeUpload"
-                    @finish="afterUpload">
+                <NUpload  action="/api/article/import" :show-file-list="false" :headers="uploadHeaders" multiple @before-upload="beforeUpload" @finish="afterUpload">
                     <NButton type="success">
                         <template #icon>
                             <p class="i-mdi:import" />
@@ -72,6 +71,7 @@
 import { defineOptions, h, onActivated, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NImage, NInput, NPopconfirm, NSelect, NSwitch, NTabPane, NTabs, NTag, NUpload } from 'naive-ui'
+import { useAuthStore } from '@/store'
 
 import CommonPage from '@/components/common/CommonPage.vue'
 import QueryItem from '@/components/crud/QueryItem.vue'
@@ -306,6 +306,16 @@ async function handleUpdateTop(row) {
         row.publishing = false
     }
 }
+
+
+// 获取 token（通常在 store 中存储）
+const { token } = useAuthStore()
+
+// 定义上传请求头
+const uploadHeaders = ref({
+  'Authorization': `Bearer ${token}`
+});
+
 
 // 导出文章
 async function exportArticles(ids) {
