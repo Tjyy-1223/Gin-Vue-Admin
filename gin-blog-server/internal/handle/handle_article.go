@@ -4,6 +4,9 @@ import (
 	"gin-blog-server/internal/global"
 	"gin-blog-server/internal/model"
 	"github.com/gin-gonic/gin"
+	"io"
+	"log/slog"
+	"mime/multipart"
 	"strconv"
 )
 
@@ -44,6 +47,16 @@ type ArticleVO struct {
 	LikeCount    int `json:"like_count" gorm:"-"`
 	ViewCount    int `json:"view_count" gorm:"-"`
 	CommentCount int `json:"comment_count" gorm:"-"`
+}
+
+type UpdateArticleTopReq struct {
+	ID    int  `json:"id"`
+	IsTop bool `json:"is_top"`
+}
+
+type SoftDeleteReq struct {
+	Ids      []int `json:"ids"`
+	IsDelete bool  `json:"is_delete"`
 }
 
 // GetList 获取文章列表
@@ -127,4 +140,127 @@ func (*Article) SaveOrUpdate(c *gin.Context) {
 	}
 
 	ReturnSuccess(c, article)
+}
+
+// UpdateTop 修改置顶信息
+func (*Article) UpdateTop(c *gin.Context) {
+	var req UpdateArticleTopReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	err := model.UpdateArticleTop(GetDB(c), req.ID, req.IsTop)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, nil)
+}
+
+// GetDetail 获取文章详细信息
+func (*Article) GetDetail(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	article, err := model.GetArticle(GetDB(c), id)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, article)
+}
+
+// UpdateSoftDelete 软删除文章
+func (*Article) UpdateSoftDelete(c *gin.Context) {
+	var req SoftDeleteReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	rows, err := model.UpdateArticleSoftDelete(GetDB(c), req.Ids, req.IsDelete)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, rows)
+}
+
+// Delete 物理删除文章
+func (*Article) Delete(c *gin.Context) {
+	var ids []int
+	if err := c.ShouldBindJSON(&ids); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	rows, err := model.DeleteArticle(GetDB(c), ids)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, rows)
+}
+
+// Export 导出文章: 获取导出后的资源链接列表
+// TODO: 目前是前端导出
+func (*Article) Export(c *gin.Context) {
+	ReturnSuccess(c, nil)
+}
+
+// Import 导入文章：题目 + 内容
+func (*Article) Import(c *gin.Context) {
+	db := GetDB(c)
+	auth, _ := CurrentUserAuth(c)
+
+	_, fileHeader, err := c.Request.FormFile("file")
+	if err != nil {
+		ReturnError(c, global.ErrFileReceive, err)
+		return
+	}
+
+	fileName := fileHeader.Filename
+	// 获取文章题目
+	title := fileName[:len(fileName)-3]
+	// 获取文章内容
+	content, err := readFromFileHeader(fileHeader)
+	if err != nil {
+		ReturnError(c, global.ErrFileReceive, err)
+		return
+	}
+
+	// 获取默认文章封面
+	defaultImg := model.GetConfig(db, global.CONFIG_ARTICLE_COVER)
+	err = model.ImportArticle(db, auth.ID, title, content, defaultImg, "学习", "后端开发")
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, nil)
+}
+
+// 获取文章内容
+func readFromFileHeader(file *multipart.FileHeader) (string, error) {
+	open, err := file.Open()
+	if err != nil {
+		slog.Error("文件读取，目标地址错误：", err)
+		return "", err
+	}
+	defer open.Close()
+
+	all, err := io.ReadAll(open)
+	if err != nil {
+		slog.Error("文件读取失败：", err)
+		return "", err
+	}
+
+	return string(all), nil
 }

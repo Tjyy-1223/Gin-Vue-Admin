@@ -116,8 +116,14 @@ func registerAdminHandler(r *gin.Engine) {
 	// 文章模块
 	articles := auth.Group("/article")
 	{
-		articles.GET("/list", articleAPI.GetList)  // 文章列表
-		articles.POST("", articleAPI.SaveOrUpdate) // 新增/编辑文章
+		articles.GET("/list", articleAPI.GetList)                 // 文章列表
+		articles.POST("", articleAPI.SaveOrUpdate)                // 新增/编辑文章
+		articles.PUT("/top", articleAPI.UpdateTop)                // 更新文章置顶
+		articles.GET("/:id", articleAPI.GetDetail)                // 文章详情
+		articles.PUT("/soft-delete", articleAPI.UpdateSoftDelete) // 软删除文章
+		articles.DELETE("", articleAPI.Delete)                    // 物理删除文章(删除回收站)
+		articles.POST("/export", articleAPI.Export)               // 导出文章
+		articles.POST("/import", articleAPI.Import)               // 导入文章
 	}
 
 	// 资源模块

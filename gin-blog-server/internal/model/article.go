@@ -2,6 +2,18 @@ package model
 
 import "gorm.io/gorm"
 
+const (
+	STATUS_PUBLIC = iota + 1 // 公开
+	STATUS_SECRET            // 私密
+	STATUS_DRAFT             // 草稿
+)
+
+const (
+	TYPE_ORIGINAL  = iota + 1 // 原创
+	TYPE_REPRINT              // 转载
+	TYPE_TRANSLATE            // 翻译
+)
+
 // Article
 // belongTo: 一个文章 属于 一个分类
 // belongTo: 一个文章 属于 一个用户
@@ -115,4 +127,88 @@ func SaveOrUpdateArticle(db *gorm.DB, article *Article, categoryName string, tag
 		result = db.Create(&articleTags)
 		return result.Error
 	})
+}
+
+// UpdateArticleTop 修改置顶信息
+func UpdateArticleTop(db *gorm.DB, id int, isTop bool) error {
+	result := db.Model(&Article{Model: Model{ID: id}}).Update("is_top", isTop)
+	return result.Error
+}
+
+// GetArticle 文章的详细信息
+func GetArticle(db *gorm.DB, id int) (data *Article, err error) {
+	result := db.Preload("Category").Preload("Tags").
+		Where(Article{Model: Model{ID: id}}).
+		First(&data)
+	return data, result.Error
+}
+
+// UpdateArticleSoftDelete 软删除文章（修改）
+func UpdateArticleSoftDelete(db *gorm.DB, ids []int, isDelete bool) (int64, error) {
+	result := db.Model(Article{}).
+		Where("id IN ?", ids).
+		Update("is_delete", isDelete)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
+}
+
+// DeleteArticle 物理删除文章
+func DeleteArticle(db *gorm.DB, ids []int) (int64, error) {
+	// 删除 [文章-标签] 关联
+	result := db.Where("article_id IN ?", ids).Delete(&ArticleTag{})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+
+	// 删除 [文章]
+	result = db.Where("id IN ?", ids).Delete(&Article{})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+
+	return result.RowsAffected, nil
+}
+
+// ImportArticle 导入文章：题目 + 内容
+// TODO：如果原来的文件中有图片的话，直接上传图片会由于链接错误无法显示？如何解决图片的自动化上传云+正常显示
+func ImportArticle(db *gorm.DB, userAuthId int, title string, content string, img string, categoryName string, tagName string) error {
+	article := Article{
+		Title:   title,
+		Content: content,
+		Img:     img,
+		Status:  STATUS_DRAFT,
+		Type:    TYPE_ORIGINAL,
+		UserId:  userAuthId,
+	}
+
+	// 生成对应的分类
+	category := Category{Name: categoryName}
+	result := db.Model(&Category{}).Where("name", categoryName).FirstOrCreate(&category)
+	if result.Error != nil {
+		return result.Error
+	}
+	article.CategoryId = category.ID
+
+	// 插入文章
+	result = db.Create(&article)
+	if result.Error != nil {
+		return result.Error
+	}
+
+	// 生成对应的文章-标签记录
+	var articleTag ArticleTag
+	tag := Tag{Name: tagName}
+	result = db.Model(&Tag{}).Where("name", tagName).FirstOrCreate(&tag)
+	if result.Error != nil {
+		return result.Error
+	}
+
+	// 插入 文章-标签
+	articleTag.ArticleId = article.ID
+	articleTag.TagId = tag.ID
+	result = db.Create(&articleTag)
+
+	return result.Error
 }

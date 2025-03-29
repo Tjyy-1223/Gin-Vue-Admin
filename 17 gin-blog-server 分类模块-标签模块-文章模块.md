@@ -1061,22 +1061,78 @@ func SaveOrUpdateArticle(db *gorm.DB, article *Article, categoryName string, tag
 manager.go
 
 ```go
-
+articles.PUT("/top", articleAPI.UpdateTop)                // 更新文章置顶
 ```
 
 handle/handle_article.go
 
 ```go
+type UpdateArticleTopReq struct {
+	ID    int  `json:"id"`
+	IsTop bool `json:"is_top"`
+}
+
+// UpdateTop 修改置顶信息
+func (*Article) UpdateTop(c *gin.Context) {
+	var req UpdateArticleTopReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	err := model.UpdateArticleTop(GetDB(c), req.ID, req.IsTop)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, nil)
+}
 
 ```
 
 model/article.go
 
 ```go
-
+// UpdateArticleTop 修改置顶信息
+func UpdateArticleTop(db *gorm.DB, id int, isTop bool) error {
+	result := db.Model(&Article{Model: Model{ID: id}}).Update("is_top", isTop)
+	return result.Error
+}
 ```
 
+> 1. `db.Model(&Article{Model: Model{ID: id}}).Update("is_top", isTop)`
+>
+> - **功能**：这种方式使用 `Model` 方法指定要操作的记录，通过 `Update` 方法只更新单个字段 `is_top` 的值。`Update` 方法接受两个参数，第一个参数是要更新的字段名，第二个参数是要更新的值。
+> - **适用场景**：当你只需要更新数据库中某条记录的单个字段时，使用这种方式较为合适。它只会更新指定的字段，不会影响其他字段的值。
+> - **示例代码解释**：
+>
+> ```go
+> // UpdateArticleTop 修改置顶信息
+> func UpdateArticleTop(db *gorm.DB, id int, isTop bool) error {
+>     result := db.Model(&Article{Model: Model{ID: id}}).Update("is_top", isTop)
+>     return result.Error
+> }
+> ```
+>
+> 在这个函数中，它会找到 `Article` 表中 `ID` 为 `id` 的记录，并将 `is_top` 字段更新为 `isTop` 的值，其他字段不会受到影响。
+>
+> 2. `db.Updates(&Article{Model: Model{ID: id}, IsTop: IsTop})`
+>
+> - **功能**：`Updates` 方法会更新结构体中所有非零值字段。它会根据结构体中设置的字段值，将这些值更新到数据库中对应 `ID` 的记录里。
+> - **适用场景**：当你需要同时更新数据库中某条记录的多个字段时，使用这种方式比较方便。不过要注意，如果结构体中的其他字段有默认值，这些默认值也会被更新到数据库中。
+> - **示例代码解释**：
+>
+> ```go
+> db.Updates(&Article{Model: Model{ID: id}, IsTop: IsTop})
+> ```
+>
+> 这里会找到 `Article` 表中 `ID` 为 `id` 的记录，然后将结构体中设置的**非零值字段** 更新到该记录中。如果 `Article` 结构体还有其他字段且有默认值，这些字段也会被更新到数据库中。
+
 对应的请求和响应如下：
+
+![image-20250328141617146](./assets/image-20250328141617146.png)
+
+![image-20250328141652161](./assets/image-20250328141652161.png)
 
 
 
@@ -1085,22 +1141,51 @@ model/article.go
 manager.go
 
 ```go
-
+articles.GET("/:id", articleAPI.GetDetail) // 文章详情
 ```
 
 handle/handle_article.go
 
 ```go
+// GetDetail 获取文章详细信息
+func (*Article) GetDetail(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
 
+	article, err := model.GetArticle(GetDB(c), id)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, article)
+}
 ```
 
 model/article.go
 
 ```go
-
+// GetArticle 文章的详细信息
+func GetArticle(db *gorm.DB, id int) (data *Article, err error) {
+	result := db.Preload("Category").Preload("Tags").
+		Where(Article{Model: Model{ID: id}}).
+		First(&data)
+	return data, result.Error
+}
 ```
 
 对应的请求和响应如下：
+
+点击查看某个具体文章时，会发送对应的请求：
+
+![image-20250328143358343](./assets/image-20250328143358343.png)
+
+返回具体的文章信息：
+
+![image-20250328143720889](./assets/image-20250328143720889.png)
 
 
 
@@ -1109,46 +1194,175 @@ model/article.go
 manager.go
 
 ```go
-
+articles.PUT("/soft-delete", articleAPI.UpdateSoftDelete) // 软删除文章
 ```
 
 handle/handle_article.go
 
 ```go
+type SoftDeleteReq struct {
+	Ids      []int `json:"ids"`
+	IsDelete bool  `json:"is_delete"`
+}
 
+// UpdateSoftDelete 软删除文章
+func (*Article) UpdateSoftDelete(c *gin.Context) {
+	var req SoftDeleteReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	rows, err := model.UpdateArticleSoftDelete(GetDB(c), req.Ids, req.IsDelete)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, rows)
+}
 ```
 
 model/article.go
 
 ```go
-
+// UpdateArticleSoftDelete 软删除文章（修改）
+func UpdateArticleSoftDelete(db *gorm.DB, ids []int, isDelete bool) (int64, error) {
+	result := db.Model(Article{}).
+		Where("id IN ?", ids).
+		Update("is_delete", isDelete)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
+}
 ```
 
 对应的请求和响应如下：
+
+操作点击删除：
+
+![image-20250328145443379](./assets/image-20250328145443379.png)
+
+查看发送的请求：
+
+![image-20250328145516914](./assets/image-20250328145516914.png)
+
+之后，更新文章列表会发现，文章已经被成功删除：
+
+<img src="./assets/image-20250328145554845.png" alt="image-20250328145554845" style="zoom:67%;" />
+
+可以到数据库中查看，当前文章的记录在数据库中并没有被删除，只不过是将 is_delete 字段修改为 1，如果将其修改为 0 的话，我们刷新界面，会发现文章重新出现在了文章列表中。
+
+![image-20250328145851211](./assets/image-20250328145851211.png)
 
 
 
 ### 3.6 文章物理删除 DELETE /article
 
+文章物理删除的主要目的是，撤出清除数据库中的记录条数，软删除和物理删除的区别在于：
+
++ 对于文章，点击删除 -> 软删除 -> 文章列表不可见，查看回收站可见
++ 对于回收站中的文章，其 is_delete 属性已经为 1，此时点击删除，会触发物理删除 -> 彻底删除文章
+
+前端代码中的核心逻辑如下：
+
+```javascript
+const extraParams = ref({
+    is_delete: null, // 未删除 | 回收站
+    status: null, // null-all, 1-公开, 2-私密, 3-草稿
+})
+
+function updateOrDeleteArticles(ids) {
+    extraParams.value.is_delete
+        ? api.deleteArticle(ids)
+        : api.softDeleteArticle(JSON.parse(ids), true)
+}
+
+// 切换标签页: [全部, 公开, 私密, 草稿箱, 回收站]
+function handleChangeTab(value) {
+    switch (value) {
+        case 'all':
+            extraParams.value.is_delete = 0
+            extraParams.value.status = null
+            break
+        case 'public':
+            extraParams.value.is_delete = 0
+            extraParams.value.status = 1
+            break
+        case 'secret':
+            extraParams.value.is_delete = 0
+            extraParams.value.status = 2
+            break
+        case 'draft':
+            extraParams.value.is_delete = 0
+            extraParams.value.status = 3
+            break
+        case 'delete':
+            extraParams.value.is_delete = 1
+            extraParams.value.status = null
+            break
+    }
+    $table.value?.handleSearch()
+}
+```
+
 manager.go
 
 ```go
-
+articles.DELETE("", articleAPI.Delete)                    // 物理删除文章
 ```
 
 handle/handle_article.go
 
 ```go
+// Delete 物理删除文章
+func (*Article) Delete(c *gin.Context) {
+	var ids []int
+	if err := c.ShouldBindJSON(&ids); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
 
+	rows, err := model.UpdateArticle(GetDB(c), ids)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, rows)
+}
 ```
 
 model/article.go
 
 ```go
+// DeleteArticle 物理删除文章
+func DeleteArticle(db *gorm.DB, ids []int) (int64, error) {
+	// 删除 [文章-标签] 关联
+	result := db.Where("article_id IN ?", ids).Delete(&ArticleTag{})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+
+	// 删除 [文章]
+	result = db.Where("id IN ?", ids).Delete(&Article{})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+
+	return result.RowsAffected, nil
+}
 
 ```
 
 对应的请求和响应如下：
+
+当我们点击回收站时，会将 is_delete = 1 的文章全部展示
+
+![image-20250328154027686](./assets/image-20250328154027686.png)
+
+然后点击删除，会将这些文章从数据库记录中删除。
 
 
 
@@ -1157,22 +1371,55 @@ model/article.go
 manager.go
 
 ```go
-
+articles.POST("/export", articleAPI.Export)               // 导出文章
 ```
 
 handle/handle_article.go
 
 ```go
-
+// Export 导出文章: 获取导出后的资源链接列表
+// TODO: 目前是前端导出
+func (*Article) Export(c *gin.Context) {
+	ReturnSuccess(c, nil)
+}
 ```
 
-model/article.go
+前端对于导出的实现如下：
 
-```go
+```javascript
+// 导出文章
+async function exportArticles(ids) {
+    // 方式一: 前端根据文章内容和标题进行导出
+    const list = $table.value?.tableData.filter(e => ids.includes(e.id))
+    for (const item of list)
+        downloadFile(item.content, `${item.title}.md`)
 
+    // 方式二: 后端导出返回链接, 前端根据链接下载
+    // const res = await api.exportArticles(ids)
+    // for (const url of res.data)
+    // downloadFile(url)
+}
+
+function downloadFile(content, fileName) {
+    const aEle = document.createElement('a') // 创建下载链接
+    aEle.download = fileName // 设置下载的名称
+    aEle.style.display = 'none'// 隐藏的可下载链接
+    // 字符内容转变成 blob 地址
+    const blob = new Blob([content])
+    aEle.href = URL.createObjectURL(blob)
+    // 绑定点击时间
+    document.body.appendChild(aEle)
+    aEle.click()
+    // 然后移除
+    document.body.removeChild(aEle)
+}
 ```
 
-对应的请求和响应如下：
+对应的操作过程如下：
+
+![image-20250329095149340](./assets/image-20250329095149340.png)
+
+![image-20250329095413387](./assets/image-20250329095413387.png)
 
 
 
@@ -1181,24 +1428,191 @@ model/article.go
 manager.go
 
 ```go
-
+articles.POST("/import", articleAPI.Import)               // 导入文章
 ```
 
 handle/handle_article.go
 
 ```go
+// Import 倒入文章：题目 + 内容
+func (*Article) Import(c *gin.Context) {
+	db := GetDB(c)
+	auth, _ := CurrentUserAuth(c)
 
+	_, fileHeader, err := c.Request.FormFile("file")
+	if err != nil {
+		ReturnError(c, global.ErrFileReceive, err)
+		return
+	}
+
+	fileName := fileHeader.Filename
+	// 获取文章题目
+	title := fileName[:len(fileName)-3]
+	// 获取文章内容
+	content, err := readFromFileHeader(fileHeader)
+	if err != nil {
+		ReturnError(c, global.ErrFileReceive, err)
+		return
+	}
+
+	// 获取默认文章封面
+	defaultImg := model.GetConfig(db, global.CONFIG_ARTICLE_COVER)
+	err = model.ImportArticle(db, auth.ID, title, content, defaultImg, "学习", "后端开发")
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, nil)
+}
+
+// 获取文章内容
+func readFromFileHeader(file *multipart.FileHeader) (string, error) {
+	open, err := file.Open()
+	if err != nil {
+		slog.Error("文件读取，目标地址错误：", err)
+		return "", err
+	}
+	defer open.Close()
+
+	all, err := io.ReadAll(open)
+	if err != nil {
+		slog.Error("文件读取失败：", err)
+		return "", err
+	}
+
+	return string(all), nil
+}
 ```
 
 model/article.go
 
 ```go
+const (
+	STATUS_PUBLIC = iota + 1 // 公开
+	STATUS_SECRET            // 私密
+	STATUS_DRAFT             // 草稿
+)
 
+const (
+	TYPE_ORIGINAL  = iota + 1 // 原创
+	TYPE_REPRINT              // 转载
+	TYPE_TRANSLATE            // 翻译
+)
+
+// ImportArticle 导入文章：题目 + 内容
+// TODO：如果原来的文件中有图片的话，直接上传图片会由于链接错误无法显示？如何解决图片的自动化上传云+正常显示
+func ImportArticle(db *gorm.DB, userAuthId int, title string, content string, img string, categoryName string, tagName string) error {
+	article := Article{
+		Title:   title,
+		Content: content,
+		Img:     img,
+		Status:  STATUS_DRAFT,
+		Type:    TYPE_ORIGINAL,
+		UserId:  userAuthId,
+	}
+
+	// 生成对应的分类
+	category := Category{Name: categoryName}
+	result := db.Model(&Category{}).Where("name", categoryName).FirstOrCreate(&category)
+	if result.Error != nil {
+		return result.Error
+	}
+	article.CategoryId = category.ID
+
+	// 插入文章
+	result = db.Create(&article)
+	if result.Error != nil {
+		return result.Error
+	}
+
+	// 生成对应的文章-标签记录
+	var articleTag ArticleTag
+	tag := Tag{Name: tagName}
+	result = db.Model(&Tag{}).Where("name", tagName).FirstOrCreate(&tag)
+	if result.Error != nil {
+		return result.Error
+	}
+
+	// 插入 文章-标签
+	articleTag.ArticleId = article.ID
+	articleTag.TagId = tag.ID
+	result = db.Create(&articleTag)
+
+	return result.Error
+}
 ```
 
 对应的请求和响应如下：
 
+1. 点击批量导入，随机选中一个 md 文件进行上传：
 
+<img src="/Users/tianjiangyu/MyStudy/Go-learning/B2-Gin-Vue-Admin/assets/image-20250329110039172.png" alt="image-20250329110039172" style="zoom:67%;" />
 
+初步怀疑
 
++ 这里我发现会报错： level=INFO msg="[Func-ReturnError] TOKEN 不存在，请重新登陆"
 
++ 报错的原因是 middleware/JWTAuth 进入到了 "没有找到的资源，不需要鉴权，跳过后续的验证过程" 分支，这种情况应该是数据库 - resource 表中缺少了导入操作的操作权限
++ 但是，我从数据库中检查，发现数据库配置没有问题
+
+我对  middleware/JWTAuth 进行 debug 排查，发现前端发送 import 请求时没有携带Authorization 中 token，所以才会报错 token 不存在
+
+这里去前端代码中进行查看发现，导入文章时候，并没有调用 api 接口，应该是从按钮处直接发送的导入请求：
+
+![image-20250329112143470](./assets/image-20250329112143470.png)
+
+ 具体代码如下：这里直接 action 调用 /api/article/import，所以没有带 token 进行请求
+
+```html
+<div class="inline-block">
+  <NUpload action="/api/article/import" :show-file-list="false" multiple @before-upload="beforeUpload"
+           @finish="afterUpload">
+    <NButton type="success">
+      <template #icon>
+        <p class="i-mdi:import" />
+      </template>
+      批量导入
+    </NButton>
+  </NUpload>
+</div>
+```
+
+我们将前端代码进行修改：
+
+```html
+<div class="inline-block">
+  <NUpload  action="/api/article/import" :show-file-list="false" :headers="uploadHeaders" multiple @before-upload="beforeUpload" @finish="afterUpload">
+    <NButton type="success">
+      <template #icon>
+        <p class="i-mdi:import" />
+          </template>
+批量导入
+  </NButton>
+</NUpload>
+</div>
+```
+
+```javascript
+import { useAuthStore } from '@/store'
+
+// 获取 token（通常在 store 中存储）
+const { token } = useAuthStore()
+
+// 定义上传请求头
+const uploadHeaders = ref({
+  'Authorization': `Bearer ${token}`
+});
+```
+
+回到前端页面，再次点击上传：
+
+![image-20250329125730793](./assets/image-20250329125730793.png)
+
+我们可以查看其携带的 payload，可以看到他将文章的内容通过 payload 进行二进制传输：
+
+![image-20250329125915470](./assets/image-20250329125915470.png)
+
+可以看到文件被正确上传：
+
+![image-20250329130238431](./assets/image-20250329130238431.png)
