@@ -20,6 +20,7 @@ func MakeMigrate(db *gorm.DB) error {
 		&Article{},      // 文章
 		&Category{},     // 分类
 		&Tag{},          // 标签
+		&Comment{},      // 评论
 		&Message{},      // 消息
 		&Page{},         // 页面
 		&Config{},       // 网站设置
@@ -76,4 +77,19 @@ func Paginate(page, size int) func(db *gorm.DB) *gorm.DB {
 		offset := (page - 1) * size
 		return db.Offset(offset).Limit(size)
 	}
+}
+
+// List 数据列表
+func List[T any](db *gorm.DB, data T, slt, order, query string, args ...any) (T, error) {
+	db = db.Model(data).Select(slt).Order(order)
+	if query != "" {
+		db = db.Where(query, args...)
+	}
+
+	// 数据存储在 data 中
+	result := db.Find(&data)
+	if result.Error != nil {
+		return data, result.Error
+	}
+	return data, nil
 }

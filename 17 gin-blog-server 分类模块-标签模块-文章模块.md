@@ -1616,3 +1616,661 @@ const uploadHeaders = ref({
 可以看到文件被正确上传：
 
 ![image-20250329130238431](./assets/image-20250329130238431.png)
+
+
+
+### 3.9 完善 FrontAPI
+
+manager.go:
+
+```go
+article := base.Group("/article")
+	{
+		article.GET("/list", frontAPI.GetArticleList)    // 前台文章列表
+		article.GET("/:id", frontAPI.GetArticleInfo)     // 前台文章详情
+		article.GET("/archive", frontAPI.GetArchiveList) // 前台文章归档
+		article.GET("/search", frontAPI.SearchArticle)   // 前台文章搜索
+	}
+```
+
+这个模块我们分别对四个功能函数进行构建，其功能与后台的功能非常类似，就不进行功能测试了，四个功能的实现分别如下：
+
+#### 3.9.1 前台文章列表
+
+handle_front.go
+
+```go
+type FArticleQuery struct {
+	PageQuery
+	CategoryId int `form:"category_id"`
+	TagId      int `form:"tag_id"`
+}
+
+// GetArticleList 获取文章列表
+func (*Front) GetArticleList(c *gin.Context) {
+	var query FArticleQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	list, _, err := model.GetBlogArticleList(GetDB(c), query.Page, query.Size, query.CategoryId, query.TagId)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, list)
+}
+```
+
+article.go:
+
+```go
+// GetBlogArticleList 前台文章列表（不在回收站并且状态为公开）
+func GetBlogArticleList(db *gorm.DB, page, size, categoryId, tagId int) (data []Article, total int64, err error) {
+	db = db.Model(Article{})
+	db = db.Where("is_delete = 0 AND status = 1")
+
+	if categoryId != 0 {
+		db = db.Where("category_id", categoryId)
+	}
+
+	if tagId != 0 {
+		db = db.Where("id IN (SELECT article_id FROM article_tag WHERE tag_id = ?)", tagId)
+	}
+
+	db = db.Count(&total)
+	result := db.Preload("Tags").Preload("Category").
+		Order("is_top DESC, id DESC").
+		Scopes(Paginate(page, size)).
+		Find(&data)
+
+	return data, total, result.Error
+}
+```
+
+处理逻辑大致如下：GetBlogArticleList 前台文章列表（不在回收站并且状态为公开）
+
+1. **初始化数据库操作对象并设置基本查询条件**：
+
+   - 代码通过 `db = db.Model(Article{})` 指定要操作的数据库表为 `Article` 模型对应的表。
+   - 接着使用 `db = db.Where("is_delete = 0 AND status = 1")` 设置基本的查询条件，筛选出 `is_delete` 字段为 `0`（表示不在回收站）且 `status` 字段为 `1`（表示状态为公开）的文章记录。
+
+2. **根据传入参数添加额外查询条件**：
+
+   - 如果 `categoryId` 不为 `0`，通过 `db = db.Where("category_id", categoryId)` 添加条件，筛选出指定分类 ID 的文章记录。
+   - 如果 `tagId` 不为 `0`，使用子查询 `db = db.Where("id IN (SELECT article_id FROM article_tag WHERE tag_id = ?)", tagId)`，筛选出包含指定标签 ID 的文章记录。
+
+3. **执行查询并处理结果**：
+
+   - 首先通过 `db = db.Count(&total)` 统计符合前面所有条件的文章总数，并将结果赋值给 `total` 变量。
+
+   - 然后使用
+
+     ```
+     result := db.Preload("Tags").Preload("Category").Order("is_top DESC, id DESC").Scopes(Paginate(page, size)).Find(&data)
+     ```
+
+      进行查询操作：
+
+     - `Preload("Tags").Preload("Category")` 进行预加载，获取文章相关的标签和分类信息，避免 N+1 查询问题。
+     - `Order("is_top DESC, id DESC")` 对查询结果进行排序，先按 `is_top` 字段降序排列（置顶文章在前），再按 `id` 字段降序排列。
+     - `Scopes(Paginate(page, size))` 应用分页逻辑，根据传入的 `page` 和 `size` 参数获取指定页码和数量的文章记录。
+     - `Find(&data)` 执行查询，并将查询结果赋值给 `data` 切片。
+
+   - 最后返回查询到的文章列表 `data`、文章总数 `total` 以及可能存在的错误 `result.Error`。
+
+
+
+#### 3.9.2 前台文章详情
+
+article.go:
+
+```go
+// BlogArticleVO 博客需要的文章详情信息
+type BlogArticleVO struct {
+	Article
+
+	CommentCount int64 `json:"comment_count"` // 评论数量
+	LikeCount    int64 `json:"like_count"`    // 点赞数量
+	ViewCount    int64 `json:"view_count"`    // 访问数量
+
+	LastArticle       ArticlePaginationVO  `gorm:"-" json:"last_article"`       // 上一篇
+	NextArticle       ArticlePaginationVO  `gorm:"-" json:"next_article"`       // 下一篇
+	RecommendArticles []RecommendArticleVO `gorm:"-" json:"recommend_articles"` // 推荐文章
+	NewestArticles    []RecommendArticleVO `gorm:"-" json:"newest_articles"`    // 最新文章
+}
+
+type ArticlePaginationVO struct {
+	ID    int    `json:"id"`
+	Img   string `json:"img"`
+	Title string `json:"title"`
+}
+
+type RecommendArticleVO struct {
+	ID        int       `json:"id"`
+	Img       string    `json:"img"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// GetBlogArticle 获取文章的详细内容，但是该文章需要不在回收站并且状态为公开
+func GetBlogArticle(db *gorm.DB, id int) (data *Article, err error) {
+	result := db.Preload("Category").Preload("Tags").
+		Where(Article{Model: Model{ID: id}}).
+		Where("is_delete = 0 AND status = 1").
+		First(&data)
+	return data, result.Error
+}
+
+// GetRecommendList 查询 n 篇推荐文章 (根据标签)
+func GetRecommendList(db *gorm.DB, id, n int) (list []RecommendArticleVO, err error) {
+	// sub1: 查出标签id列表
+	// SELECT tag_id FROM `article_tag` WHERE `article_id` = ?
+	sub1 := db.Table("article_tag").Select("tag_id").Where("article_id", id)
+
+	// sub2: 查出这些标签对应的文章id列表 (去重, 且不包含当前文章)
+	// SELECT DISTINCT article_id FROM (sub1) t
+	// JOIN article_tag t1 ON t.tag_id = t1.tag_id
+	// WHERE `article_id` != ?
+	sub2 := db.Table("(?) t1", sub1).
+		Select("DISTINCT article_id").
+		Joins("JOIN article_tag t ON t.tag_id = t1.tag_id").
+		Where("article_id != ?", id)
+
+	// 根据 文章id列表 查出文章信息 (前 n 个)
+	result := db.Table("(?) t2", sub2).
+		Select("id, title, img, created_at").
+		Joins("JOIN article a ON t2.article_id = a.id").
+		Where("a.is_delete = 0 AND a.status = 1").
+		Order("is_top, id DESC").
+		Limit(n).
+		Find(&list)
+	return list, result.Error
+}
+
+// GetNewestList 查询最新的 n 篇文章
+func GetNewestList(db *gorm.DB, n int) (data []RecommendArticleVO, err error) {
+	result := db.Model(&Article{}).
+		Select("id, title, img, created_at").
+		Where("is_delete = 0 AND status = 1").
+		Order("created_at DESC, id ASC").
+		Limit(n).
+		Find(&data)
+	return data, result.Error
+}
+
+// GetLastArticle 查询上一篇文章 (id < 当前文章 id)
+func GetLastArticle(db *gorm.DB, id int) (val ArticlePaginationVO, err error) {
+	sub := db.Table("article").Select("max(id)").Where("id < ?", id)
+	result := db.Table("article").
+		Select("id, title, img").
+		Where("is_delete = 0 AND status = 1 AND id = (?)", sub).
+		Find(&val)
+	return val, result.Error
+}
+
+// GetNextArticle 查询下一篇文章 (id > 当前文章 id)
+func GetNextArticle(db *gorm.DB, id int) (data ArticlePaginationVO, err error) {
+	result := db.Model(&Article{}).
+		Select("id, title, img").
+		Where("is_delete = 0 AND status = 1 AND id > ?", id).
+		Limit(1).
+		Find(&data)
+	return data, result.Error
+}
+```
+
+comment.go
+
+```go
+/*
+如果评论类型是文章，那么 topic_id 就是文章的 id
+如果评论类型是友链，不需要 topic_id
+*/
+
+type Comment struct {
+	Model
+	UserId      int    `json:"user_id"`       // 评论者
+	ReplyUserId int    `json:"reply_user_id"` // 被回复者
+	TopicId     int    `json:"topic_id"`      // 评论的文章
+	ParentId    int    `json:"parent_id"`     // 父评论 被回复的评论
+	Content     string `gorm:"type:varchar(500);not null" json:"content"`
+	Type        int    `gorm:"type:tinyint(1);not null;comment:评论类型(1.文章 2.友链 3.说说)" json:"type"` // 评论类型 1.文章 2.友链 3.说说
+	IsReview    bool   `json:"is_review"`
+
+	// Belongs To
+	User      *UserAuth `gorm:"foreignKey:UserId" json:"user"`
+	ReplyUser *UserAuth `gorm:"foreignKey:ReplyUserId" json:"reply_user"`
+	Article   *Article  `gorm:"foreignKey:TopicId" json:"article"`
+}
+
+type CommentVO struct {
+	Comment
+	LikeCount  int         `json:"like_count" gorm:"-"`
+	ReplyCount int         `json:"reply_count" gorm:"-"`
+	ReplyList  []CommentVO `json:"reply_list" gorm:"-"`
+}
+
+
+// GetArticleCommentCount 获取某篇文章的评论数
+func GetArticleCommentCount(db *gorm.DB, articleId int) (count int64, err error) {
+	result := db.Model(&Comment{}).
+		Where("topic_id = ? AND type = 1 AND is_review = 1", articleId).
+		Count(&count)
+	return count, result.Error
+}
+```
+
+同时，z_base.go 中不全关于 comment 的自动生成：
+
+```go
+return db.AutoMigrate(
+		...
+		&Comment{},      // 评论
+		...
+	)
+```
+
+handle_front.go
+
+```go
+// GetArticleInfo 根据 [文章id] 获取 [文章详情]
+func (*Front) GetArticleInfo(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	db := GetDB(c)
+	rdb := GetRDB(c)
+
+	// 文章详情
+	val, err := model.GetBlogArticle(db, id)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	article := model.BlogArticleVO{Article: *val}
+
+	// 推荐文章 - 6篇
+	article.RecommendArticles, err = model.GetRecommendList(db, id, 6)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	// 最新文章 - 5 篇
+	article.NewestArticles, err = model.GetNewestList(db, 5)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	// 更新文章浏览量 TODO: 删除文章时删除其浏览量
+	// updateArticleViewCount(c, id)
+
+	// TODO: 更新访问量
+	// * 目前请求一次就会增加访问量, 即刷新可以刷访问量
+	rdb.ZIncrBy(rctx, global.ARTICLE_VIEW_COUNT, 1, strconv.Itoa(id))
+
+	// 上一篇文章
+	article.LastArticle, err = model.GetLastArticle(db, id)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	// 下一篇文章
+	article.NextArticle, err = model.GetNextArticle(db, id)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	// 点赞量, 浏览量
+	article.ViewCount = int64(rdb.ZScore(rctx, global.ARTICLE_VIEW_COUNT, strconv.Itoa(id)).Val())
+	likeCount, _ := strconv.Atoi(rdb.HGet(rctx, global.ARTICLE_LIKE_COUNT, strconv.Itoa(id)).Val())
+	article.LikeCount = int64(likeCount)
+
+	// 评论数量
+	article.CommentCount, err = model.GetArticleCommentCount(db, id)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, article)
+}
+```
+
+处理逻辑大致如下
+
+1. **获取文章 ID 并进行错误处理**
+   - 从请求的 URL 参数中获取文章的 `id`，并将其从字符串转换为整数类型。
+   - 若转换过程中出现错误，调用 `ReturnError` 函数返回错误信息给客户端，然后终止函数执行。
+2. **获取数据库和 Redis 连接**
+   - 通过 `GetDB` 函数获取数据库连接对象 `db`。
+   - 通过 `GetRDB` 函数获取 Redis 连接对象 `rdb`。
+3. **获取文章详情**
+   - 调用 `model.GetBlogArticle` 函数，根据文章 `id` 从数据库中获取文章的详细信息。
+   - 若获取过程中出现错误，调用 `ReturnError` 函数返回数据库操作错误信息给客户端，然后终止函数执行。
+   - 将获取到的文章信息封装到 `model.BlogArticleVO` 结构体的 `Article` 字段中。
+4. **获取推荐文章和最新文章**
+   - 调用 `model.GetRecommendList` 函数，根据文章 `id` 从数据库中获取 6 篇推荐文章，并将结果存储在 `article.RecommendArticles` 字段中。若获取过程中出现错误，返回错误信息并终止执行。
+   - 调用 `model.GetNewestList` 函数，从数据库中获取 5 篇最新文章，并将结果存储在 `article.NewestArticles` 字段中。若获取过程中出现错误，返回错误信息并终止执行。
+5. **更新文章浏览量（待完善）**
+   - 有一个注释提示的 `updateArticleViewCount` 函数调用，该功能待实现，目的是更新文章的浏览量。
+   - 直接使用 Redis 的 `ZIncrBy` 方法将对应文章的浏览量增加 1。
+6. **获取上一篇和下一篇文章**
+   - 调用 `model.GetLastArticle` 函数，根据文章 `id` 从数据库中获取上一篇文章的信息，并将结果存储在 `article.LastArticle` 字段中。若获取过程中出现错误，返回错误信息并终止执行。
+   - 调用 `model.GetNextArticle` 函数，根据文章 `id` 从数据库中获取下一篇文章的信息，并将结果存储在 `article.NextArticle` 字段中。若获取过程中出现错误，返回错误信息并终止执行。
+7. **获取文章点赞量和浏览量**
+   - 从 Redis 中获取对应文章的浏览量，并将其存储在 `article.ViewCount` 字段中。
+   - 从 Redis 中获取对应文章的点赞量，将其转换为整数类型后存储在 `article.LikeCount` 字段中。
+8. **获取文章评论数量**
+   - 调用 `model.GetArticleCommentCount` 函数，根据文章 `id` 从数据库中获取文章的评论数量，并将结果存储在 `article.CommentCount` 字段中。若获取过程中出现错误，返回错误信息并终止执行。
+9. **返回成功响应**
+   - 若上述所有操作都成功完成，调用 `ReturnSuccess` 函数将包含文章详情、推荐文章、最新文章、上一篇文章、下一篇文章、点赞量、浏览量和评论数量的 `article` 对象返回给客户端。
+
+
+
+#### 3.9.3 前台文章归档
+
+handle_front.go
+
+```go
+type ArchiveVO struct {
+	ID        int       `json:"id"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// GetArchiveList 获取文章归档
+func (*Front) GetArchiveList(c *gin.Context) {
+	var query FArticleQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	list, total, err := model.GetBlogArticleList(GetDB(c), query.Page, query.Size, query.CategoryId, query.TagId)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	archives := make([]ArchiveVO, 0)
+	for _, article := range list {
+		archives = append(archives, ArchiveVO{
+			ID:        article.ID,
+			Title:     article.Title,
+			CreatedAt: article.CreatedAt,
+		})
+	}
+
+	ReturnSuccess(c, PageResult[ArchiveVO]{
+		Total: total,
+		List:  archives,
+		Page:  query.Page,
+		Size:  query.Size,
+	})
+}
+
+```
+
+处理逻辑大致如下
+
+**1. 解析前端请求参数**
+
+- 从 `c` 解析前端传递的 查询参数（`page`、`size`、`categoryId`、`tagId`）。
+- 如果解析失败，则返回请求参数错误。
+
+**2.调用数据库查询文章列表**
+
+- 通过 `model.GetBlogArticleList()` 方法查询数据库，获取 文章列表 和 总数。
+- 发生错误时，返回数据库查询错误。
+
+**3. 转换数据格式**
+
+- 遍历 `list`，将 `Article` 结构体转换为 `ArchiveVO`（只保留 `ID`、`Title`、`CreatedAt`）。
+- 避免返回 `Content` 等冗余数据。
+
+**4. 返回成功响应**
+
+- 使用 `PageResult` 结构体，返回 分页数据 和 文章归档列表。
+
+
+
+#### 3.9.4 前台文章搜索
+
+z_base.go:
+
+```go
+// List 数据列表
+func List[T any](db *gorm.DB, data T, slt, order, query string, args ...any) (T, error) {
+	db = db.Model(data).Select(slt).Order(order)
+	if query != "" {
+		db = db.Where(query, args...)
+	}
+
+	// 数据存储在 data 中
+	result := db.Find(&data)
+	if result.Error != nil {
+		return data, result.Error
+	}
+	return data, nil
+}
+```
+
+获取字符位置的函数如下：
+
+```go
+// 获取带中文的字符串中 子字符串 的实际位置，非字节位置
+func unicodeIndex(str, substr string) int {
+	// 子串在字符串中的字节位置
+	result := strings.Index(str, substr)
+	if result > 0 {
+		// 前缀字节数目
+		prefix := []byte(str)[0:result]
+		// 字节转换成字符
+		rs := []rune(string(prefix))
+		// 统计字符数目
+		result = len(rs)
+	}
+	return result
+}
+
+// 获取带中文的字符串实际长度，非字节长度
+func unicodeLen(str string) int {
+	var r = []rune(str)
+	return len(r)
+}
+
+// 解决中文获取位置不正确问题
+func substring(source string, start int, end int) string {
+	var unicodeStr = []rune(source)
+	length := len(unicodeStr)
+	if start >= end {
+		return ""
+	}
+	if start < 0 {
+		start = 0
+	}
+	if end > length {
+		end = length
+	}
+	if start <= 0 && end >= length {
+		return source
+	}
+	var substring = ""
+	for i := start; i < end; i++ {
+		substring += string(unicodeStr[i])
+	}
+	return substring
+}
+
+```
+
+> **1. `string` 是 UTF-8 编码的字节序列**
+>
+> - 在 Go 语言中，字符串 `string` 本质上是 **一个只读的 `byte`（即 `uint8`）序列**，采用 **UTF-8 编码**。
+> - 由于 UTF-8 采用**变长编码**（一个字符可能占 1~4 个字节），所以 `string` 的索引操作 `str[i]` 得到的是**字节（byte）**，而不是字符。
+>
+> ```go
+> s := "你好"  // UTF-8 编码："你" 占 3 个字节，"好" 占 3 个字节
+> fmt.Println(len(s))   // 输出 6，表示字节长度
+> fmt.Println(s[0])     // 输出 228（"你" 的第一个字节）
+> fmt.Println(s[1])     // 输出 189（"你" 的第二个字节）
+> ```
+>
+> **2. `rune` 表示单个 Unicode 字符**
+>
+> - `rune` 本质上是 `int32` 类型，用于表示 **单个 Unicode 码点（字符）**。
+> - 通过 `[]rune(str)` 可以把 `string` 转换为 `rune` 切片，这样就可以正确地按 **字符** 进行索引，而不是按 **字节**。
+>
+> ```go
+> s := "你好"
+> runes := []rune(s)
+> fmt.Println(len(runes))   // 输出 2（表示有两个字符）
+> fmt.Println(runes[0])     // 输出 20320（'你' 的 Unicode 码点）
+> fmt.Println(runes[1])     // 输出 22909（'好' 的 Unicode 码点）
+> ```
+
+**UTF-8 是 Unicode 的一种编码方式**
+
+Unicode 码点需要一种编码方式来存储到计算机中。UTF-8 是其中最常用的一种。
+
+UTF-8 编码规则（变长编码）：
+
+- ASCII 兼容：`U+0000` ~ `U+007F`（即标准 ASCII）使用 1 个字节，与 ASCII 编码完全相同。
+- 超出 ASCII 范围的字符 使用 2~4 个字节：
+  - 1 字节：`0xxxxxxx`（适用于 ASCII 码）。
+  - 2 字节：`110xxxxx 10xxxxxx`（适用于拉丁扩展字符）。
+  - 3 字节：`1110xxxx 10xxxxxx 10xxxxxx`（适用于中文、日文、韩文等字符）。
+  - 4 字节：`11110xxx 10xxxxxx 10xxxxxx 10xxxxxx`（适用于一些特殊符号或表情符号）。
+
+**示例：**
+
+| **字符** | **Unicode 码点** | **UTF-8 编码（十六进制）** | **所需字节数** |
+| -------- | ---------------- | -------------------------- | -------------- |
+| A        | U+0041           | `0x41`                     | 1 字节         |
+| ñ        | U+00F1           | `0xC3 0xB1`                | 2 字节         |
+| 你       | U+4F60           | `0xE4 0xBD 0xA0`           | 3 字节         |
+| 😀        | U+1F600          | `0xF0 0x9F 0x98 0x80`      | 4 字节         |
+
+handle_front.go
+
+```go
+type ArticleSearchVO struct {
+	ID      int    `json:"id"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+
+
+// SearchArticle 文章搜索
+// TODO：搜索是否可以使用 ES
+func (*Front) SearchArticle(c *gin.Context) {
+	result := make([]ArticleSearchVO, 0)
+
+	keyword := c.Query("keyword")
+	if keyword == "" {
+		ReturnSuccess(c, result)
+		return
+	}
+
+	db := GetDB(c)
+
+	// 筛选出符合条件 article
+	articleList, err := model.List(db, []model.Article{}, "*", "",
+		"is_delete = 0 AND status = 1 AND (title LIKE ? OR content LIKE ?)",
+		"%"+keyword+"%", "%"+keyword+"%")
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	for _, article := range articleList {
+		// 高亮标题中的关键字
+		title := strings.ReplaceAll(article.Title, keyword,
+			"<span style='color:#f47466'>"+keyword+"</span>")
+
+		content := article.Content
+
+		// 关键字在内容中的起始位置
+		keywordStartIndex := unicodeIndex(content, keyword)
+		if keywordStartIndex != -1 { // 关键字在内容中
+			preIndex, afterIndex := 0, 0
+			// 不要截取太长的字符串
+			if keywordStartIndex > 25 {
+				preIndex = keywordStartIndex - 25
+			}
+
+			// 防止中文截取出乱码 (中文在 golang 是 3 个字符, 使用 rune 中文占一个数组下标)
+			preText := substring(content, preIndex, keywordStartIndex)
+
+			// 关键字在内容中的结束位置
+			keywordEndIndex := keywordStartIndex + unicodeLen(keyword)
+			afterLength := unicodeLen(content) - keywordEndIndex
+			if afterLength > 100 {
+				afterIndex = keywordEndIndex + 100
+			} else {
+				afterIndex = keywordEndIndex + afterLength
+			}
+
+			// 截取后续的文章内容
+			afterText := substring(content, keywordStartIndex, afterIndex)
+			// 高亮内容中的关键字
+			content = strings.ReplaceAll(preText+afterText, keyword,
+				"<span style='color:#f47466'>"+keyword+"</span>")
+		}
+
+		result = append(result, ArticleSearchVO{
+			ID:      article.ID,
+			Title:   title,
+			Content: content,
+		})
+	}
+
+	ReturnSuccess(c, result)
+}
+```
+
+处理逻辑大致如下
+
+**1. 获取搜索关键词**
+
+- 通过 `c.Query("keyword")` 获取前端传来的 `keyword` 参数。
+- 如果 `keyword` 为空，直接返回一个空结果，避免不必要的数据库查询。
+
+**2. 查询符合条件的文章**
+
+- 通过 `model.List(db, ...)` 执行数据库查询，筛选出 **未删除（`is_delete = 0`）、状态正常（`status = 1`）的文章**，并且 **标题或内容包含关键词**（`LIKE ?`）。
+- 如果数据库查询出错，直接返回错误信息。
+
+**3. 处理搜索结果**
+
+- 遍历 `articleList`，对每篇文章进行以下处理：
+  - **标题高亮**：使用 `strings.ReplaceAll(article.Title, keyword, 高亮HTML)`，将标题中的 `keyword` 替换为带颜色的 `<span>` 标记。
+  - **内容高亮**：
+    1. 计算 `keyword` 在内容中的位置 `keywordStartIndex`。
+    2. 取 `keywordStartIndex` **前 25 个字符** 和 **后 100 个字符**（防止中文乱码，使用 `rune` 切片处理）。
+    3. 拼接前后文本，并高亮 `keyword`。
+
+**4. 返回最终结果**
+
+- 将处理后的文章 **ID、标题（带高亮）、内容摘要（带高亮）** 组装成 `ArticleSearchVO` 并加入 `result` 列表。
+- 调用 `ReturnSuccess(c, result)` 返回 JSON 响应给前端。
+
+------
+
+这段代码实现了一个 基于 SQL 的文章搜索功能，并对 标题和内容进行高亮显示。
+ 可以优化的点：
+
+- 全文搜索优化：可以使用 Elasticsearch（ES） 来提高搜索效率。
+- 内容高亮优化：现在是 简单的 `strings.ReplaceAll`，但 ES 提供更高级的 分词+高亮 方案。

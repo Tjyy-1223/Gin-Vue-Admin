@@ -147,6 +147,14 @@ func registerBlogHandler(r *gin.Engine) {
 	base.GET("/home", frontAPI.GetHomeInfo)  // 前台首页
 	base.GET("/page", pageAPI.GetList)       // 前台页面
 
+	article := base.Group("/article")
+	{
+		article.GET("/list", frontAPI.GetArticleList)    // 前台文章列表
+		article.GET("/:id", frontAPI.GetArticleInfo)     // 前台文章详情
+		article.GET("/archive", frontAPI.GetArchiveList) // 前台文章归档
+		article.GET("/search", frontAPI.SearchArticle)   // 前台文章搜索
+	}
+
 	category := base.Group("/category")
 	{
 		category.GET("/list", frontAPI.GetCategoryList) // 前台分类列表

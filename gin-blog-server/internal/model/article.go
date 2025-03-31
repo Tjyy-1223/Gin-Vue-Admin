@@ -1,6 +1,9 @@
 package model
 
-import "gorm.io/gorm"
+import (
+	"gorm.io/gorm"
+	"time"
+)
 
 const (
 	STATUS_PUBLIC = iota + 1 // 公开
@@ -44,6 +47,33 @@ type ArticleTag struct {
 	TagId     int
 }
 
+// BlogArticleVO 博客需要的文章详情信息
+type BlogArticleVO struct {
+	Article
+
+	CommentCount int64 `json:"comment_count"` // 评论数量
+	LikeCount    int64 `json:"like_count"`    // 点赞数量
+	ViewCount    int64 `json:"view_count"`    // 访问数量
+
+	LastArticle       ArticlePaginationVO  `gorm:"-" json:"last_article"`       // 上一篇
+	NextArticle       ArticlePaginationVO  `gorm:"-" json:"next_article"`       // 下一篇
+	RecommendArticles []RecommendArticleVO `gorm:"-" json:"recommend_articles"` // 推荐文章
+	NewestArticles    []RecommendArticleVO `gorm:"-" json:"newest_articles"`    // 最新文章
+}
+
+type ArticlePaginationVO struct {
+	ID    int    `json:"id"`
+	Img   string `json:"img"`
+	Title string `json:"title"`
+}
+
+type RecommendArticleVO struct {
+	ID        int       `json:"id"`
+	Img       string    `json:"img"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // GetArticleList 获取文章列表
 func GetArticleList(db *gorm.DB, page, size int, title string, isDelete *bool, status, typ, categoryId, tagId int) (list []Article, total int64, err error) {
 	db = db.Model(Article{})
@@ -77,6 +107,28 @@ func GetArticleList(db *gorm.DB, page, size int, title string, isDelete *bool, s
 		Order("is_top DESC, article.id DESC").
 		Find(&list)
 	return list, total, result.Error
+}
+
+// GetBlogArticleList 前台文章列表（不在回收站并且状态为公开）
+func GetBlogArticleList(db *gorm.DB, page, size, categoryId, tagId int) (data []Article, total int64, err error) {
+	db = db.Model(Article{})
+	db = db.Where("is_delete = 0 AND status = 1")
+
+	if categoryId != 0 {
+		db = db.Where("category_id", categoryId)
+	}
+
+	if tagId != 0 {
+		db = db.Where("id IN (SELECT article_id FROM article_tag WHERE tag_id = ?)", tagId)
+	}
+
+	db = db.Count(&total)
+	result := db.Preload("Tags").Preload("Category").
+		Order("is_top DESC, id DESC").
+		Scopes(Paginate(page, size)).
+		Find(&data)
+
+	return data, total, result.Error
 }
 
 // SaveOrUpdateArticle 新增/编辑文章, 同时根据 分类名称, 标签名称 维护关联表
@@ -140,6 +192,72 @@ func GetArticle(db *gorm.DB, id int) (data *Article, err error) {
 	result := db.Preload("Category").Preload("Tags").
 		Where(Article{Model: Model{ID: id}}).
 		First(&data)
+	return data, result.Error
+}
+
+// GetBlogArticle 获取文章的详细内容，但是该文章需要不在回收站并且状态为公开
+func GetBlogArticle(db *gorm.DB, id int) (data *Article, err error) {
+	result := db.Preload("Category").Preload("Tags").
+		Where(Article{Model: Model{ID: id}}).
+		Where("is_delete = 0 AND status = 1").
+		First(&data)
+	return data, result.Error
+}
+
+// GetRecommendList 查询 n 篇推荐文章 (根据标签)
+func GetRecommendList(db *gorm.DB, id, n int) (list []RecommendArticleVO, err error) {
+	// sub1: 查出标签id列表
+	// SELECT tag_id FROM `article_tag` WHERE `article_id` = ?
+	sub1 := db.Table("article_tag").Select("tag_id").Where("article_id", id)
+
+	// sub2: 查出这些标签对应的文章id列表 (去重, 且不包含当前文章)
+	// SELECT DISTINCT article_id FROM (sub1) t
+	// JOIN article_tag t1 ON t.tag_id = t1.tag_id
+	// WHERE `article_id` != ?
+	sub2 := db.Table("(?) t1", sub1).
+		Select("DISTINCT article_id").
+		Joins("JOIN article_tag t ON t.tag_id = t1.tag_id").
+		Where("article_id != ?", id)
+
+	// 根据 文章id列表 查出文章信息 (前 n 个)
+	result := db.Table("(?) t2", sub2).
+		Select("id, title, img, created_at").
+		Joins("JOIN article a ON t2.article_id = a.id").
+		Where("a.is_delete = 0 AND a.status = 1").
+		Order("is_top, id DESC").
+		Limit(n).
+		Find(&list)
+	return list, result.Error
+}
+
+// GetNewestList 查询最新的 n 篇文章
+func GetNewestList(db *gorm.DB, n int) (data []RecommendArticleVO, err error) {
+	result := db.Model(&Article{}).
+		Select("id, title, img, created_at").
+		Where("is_delete = 0 AND status = 1").
+		Order("created_at DESC, id ASC").
+		Limit(n).
+		Find(&data)
+	return data, result.Error
+}
+
+// GetLastArticle 查询上一篇文章 (id < 当前文章 id)
+func GetLastArticle(db *gorm.DB, id int) (val ArticlePaginationVO, err error) {
+	sub := db.Table("article").Select("max(id)").Where("id < ?", id)
+	result := db.Table("article").
+		Select("id, title, img").
+		Where("is_delete = 0 AND status = 1 AND id = (?)", sub).
+		Find(&val)
+	return val, result.Error
+}
+
+// GetNextArticle 查询下一篇文章 (id > 当前文章 id)
+func GetNextArticle(db *gorm.DB, id int) (data ArticlePaginationVO, err error) {
+	result := db.Model(&Article{}).
+		Select("id, title, img").
+		Where("is_delete = 0 AND status = 1 AND id > ?", id).
+		Limit(1).
+		Find(&data)
 	return data, result.Error
 }
 
