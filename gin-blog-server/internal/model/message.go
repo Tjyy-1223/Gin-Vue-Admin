@@ -1,5 +1,7 @@
 package model
 
+import "gorm.io/gorm"
+
 type Message struct {
 	Model
 	Nickname  string `gorm:"type:varchar(50);comment:昵称" json:"nickname"`
@@ -9,4 +11,9 @@ type Message struct {
 	IpSource  string `gorm:"type:varchar(255);comment:IP 来源" json:"ipSource"`
 	Speed     int    `gorm:"type:tinyint(1);comment:弹幕速度" json:"speed"`
 	IsReview  bool   `json:"is_review"`
+}
+
+func UpdateMessageReview(db *gorm.DB, ids []int, isReview bool) (int64, error) {
+	result := db.Model(&Message{}).Where("id in ?", ids).Update("is_review", isReview)
+	return result.RowsAffected, result.Error
 }

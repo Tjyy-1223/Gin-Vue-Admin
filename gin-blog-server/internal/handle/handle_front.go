@@ -4,6 +4,7 @@ import (
 	"gin-blog-server/internal/global"
 	"gin-blog-server/internal/model"
 	"github.com/gin-gonic/gin"
+	"html/template"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +28,23 @@ type ArticleSearchVO struct {
 	ID      int    `json:"id"`
 	Title   string `json:"title"`
 	Content string `json:"content"`
+}
+
+type FAddCommentReq struct {
+	ReplyUserId int    `json:"reply_user_id" form:"reply_user_id"`
+	TopicId     int    `json:"topic_id" form:"topic_id"`
+	Content     string `json:"content" form:"content"`
+	ParentId    int    `json:"parent_id" form:"parent_id"`
+	Type        int    `json:"type" form:"type" validate:"required,min=1,max=3" label:"评论类型"`
+}
+
+type FCommentQuery struct {
+	PageQuery
+	ReplyUserId int    `json:"reply_user_id" form:"reply_user_id"`
+	TopicId     int    `json:"topic_id" form:"topic_id"`
+	Content     string `json:"content" form:"content"`
+	ParentId    int    `json:"parent_id" form:"parent_id"`
+	Type        int    `json:"type" form:"type"`
 }
 
 // GetHomeInfo 前台首页信息
@@ -291,4 +309,134 @@ func substring(source string, start int, end int) string {
 		substring += string(unicodeStr[i])
 	}
 	return substring
+}
+
+// SaveComment 保存评论（只能新增，不能编辑）
+// TODO: 添加自定义头像和昵称留言功能（即可以不登录评论）
+// TODO: 开启邮箱通知用户功能
+// TODO: HTMLUtil.Filter 过滤 HTML 元素中的字符串...
+func (*Front) SaveComment(c *gin.Context) {
+	var req FAddCommentReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	// 过滤评论内容，防止 XSS 攻击
+	req.Content = template.HTMLEscapeString(req.Content)
+	auth, _ := CurrentUserAuth(c)
+	db := GetDB(c)
+	isReview := model.GetConfigBool(db, global.CONFIG_IS_COMMENT_REVIEW)
+
+	var comment *model.Comment
+	var err error
+
+	if req.ReplyUserId == 0 { // 评论文章
+		comment, err = model.AddComment(db, auth.ID, req.Type, req.TopicId, req.Content, isReview)
+	} else { // 回复评论
+		comment, err = model.ReplyComment(db, auth.ID, req.ReplyUserId, req.ParentId, req.Content, isReview)
+	}
+
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, comment)
+}
+
+// GetCommentList 获取评论列表
+func (*Front) GetCommentList(c *gin.Context) {
+	var query FCommentQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	db := GetDB(c)
+	rdb := GetRDB(c)
+
+	data, total, err := model.GetCommentVOList(db, query.Page, query.Size, query.TopicId, query.Type)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	likeCountMap := rdb.HGetAll(rctx, global.COMMENT_LIKE_COUNT).Val()
+	for i, comment := range data {
+		if len(data[i].ReplyList) > 3 {
+			// 只显示三条回复
+			data[i].ReplyList = data[i].ReplyList[:3]
+		}
+		data[i].LikeCount, _ = strconv.Atoi(likeCountMap[strconv.Itoa(comment.ID)])
+	}
+
+	ReturnSuccess(c, PageResult[model.CommentVO]{
+		List:  data,
+		Total: total,
+		Size:  query.Size,
+		Page:  query.Page,
+	})
+}
+
+// GetReplyListByCommentId 根据 [评论id] 获取 [回复列表]
+func (*Front) GetReplyListByCommentId(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("comment_id"))
+	if err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	var query PageQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	db := GetDB(c)
+	rdb := GetRDB(c)
+
+	replyList, err := model.GetCommentReplyList(db, id, query.Page, query.Size)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	likeCountMap := rdb.HGetAll(rctx, global.COMMENT_LIKE_COUNT).Val()
+
+	data := make([]model.CommentVO, 0)
+	for _, reply := range replyList {
+		like, _ := strconv.Atoi(likeCountMap[strconv.Itoa(reply.ID)])
+		data = append(data, model.CommentVO{
+			Comment:   reply,
+			LikeCount: like,
+		})
+	}
+
+	ReturnSuccess(c, data)
+}
+
+// LikeComment 点赞评论
+func (*Front) LikeComment(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("comment_id"))
+	if err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	rdb := GetRDB(c)
+	auth, _ := CurrentUserAuth(c)
+
+	// 一个用户对应一个 redis set
+	commentLikeUserKey := global.COMMENT_USER_LIKE_SET + strconv.Itoa(auth.ID)
+	// 该评论已经被记录过, 再点赞就是取消点赞
+	if rdb.SIsMember(rctx, commentLikeUserKey, id).Val() {
+		rdb.SRem(rctx, commentLikeUserKey, id)
+		rdb.HIncrBy(rctx, global.COMMENT_LIKE_COUNT, strconv.Itoa(id), -1)
+	} else { // 未被记录过, 则是增加点赞
+		rdb.SAdd(rctx, commentLikeUserKey, id)
+		rdb.HIncrBy(rctx, global.COMMENT_LIKE_COUNT, strconv.Itoa(id), 1)
+	}
+
+	ReturnSuccess(c, nil)
 }

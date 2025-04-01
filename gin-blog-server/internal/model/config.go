@@ -88,3 +88,12 @@ func CheckConfig(db *gorm.DB, key, value string) error {
 
 	return result.Error
 }
+
+// GetConfigBool 获取配置
+func GetConfigBool(db *gorm.DB, key string) bool {
+	val := GetConfig(db, key)
+	if val == "" {
+		return false
+	}
+	return val == "true"
+}

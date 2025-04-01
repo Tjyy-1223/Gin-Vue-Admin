@@ -26,6 +26,7 @@ func JWTAuth() gin.HandlerFunc {
 		db := c.MustGet(global.CTX_DB).(*gorm.DB)
 
 		// 系统管理的资源需要进行用户鉴权，其他资源不需要鉴权
+		// TODO: 其实可以要所有的资源都需要鉴权，不然新资源有时候会有 bug
 		url, method := c.FullPath()[4:], c.Request.Method
 		resource, err := model.GetResource(db, url, method)
 		if err != nil {

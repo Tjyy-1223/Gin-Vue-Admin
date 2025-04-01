@@ -21,6 +21,7 @@ var (
 	categoryAPI handle.Category // 分类
 	tagAPI      handle.Tag      // 标签
 	articleAPI  handle.Article  // 文章
+	commentAPI  handle.Comment  // 评论
 )
 
 func RegisterHandlers(r *gin.Engine) {
@@ -126,6 +127,14 @@ func registerAdminHandler(r *gin.Engine) {
 		articles.POST("/import", articleAPI.Import)               // 导入文章
 	}
 
+	// 评论模块
+	comment := auth.Group("/comment")
+	{
+		comment.GET("/list", commentAPI.GetList)        // 评论列表
+		comment.DELETE("", commentAPI.Delete)           // 删除评论
+		comment.PUT("/review", commentAPI.UpdateReview) // 修改评论审核
+	}
+
 	// 资源模块
 	//resource := auth.Group("/resource")
 	//{
@@ -165,10 +174,19 @@ func registerBlogHandler(r *gin.Engine) {
 		tag.GET("/list", frontAPI.GetTagList) // 前台标签列表
 	}
 
+	comment := base.Group("/comment")
+	{
+		comment.GET("/list", frontAPI.GetCommentList)                         // 前台评论列表
+		comment.GET("/replies/:comment_id", frontAPI.GetReplyListByCommentId) // 根据评论 id 查询回复
+	}
+
 	// 需要登录才能进行的操作
 	base.Use(middleware.JWTAuth())
 	{
 		base.GET("/user/info", userAPI.GetInfo)       // 根据 Token 获取用户信息
 		base.PUT("/user/info", userAPI.UpdateCurrent) // 根据 Token 更新当前用户信息
+
+		base.POST("/comment", frontAPI.SaveComment)                 // 前台新增评论
+		base.GET("/comment/like/:comment_id", frontAPI.LikeComment) // 前台点赞评论
 	}
 }
