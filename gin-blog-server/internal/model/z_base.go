@@ -22,6 +22,7 @@ func MakeMigrate(db *gorm.DB) error {
 		&Tag{},          // 标签
 		&Comment{},      // 评论
 		&Message{},      // 消息
+		&FriendLink{},   // 友链
 		&Page{},         // 页面
 		&Config{},       // 网站设置
 		&OperationLog{}, // 操作日志

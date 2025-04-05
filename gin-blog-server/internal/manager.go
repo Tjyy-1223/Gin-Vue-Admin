@@ -23,6 +23,7 @@ var (
 	articleAPI  handle.Article  // 文章
 	commentAPI  handle.Comment  // 评论
 	messageAPI  handle.Message  // 留言
+	linkAPI     handle.Link     // 友链
 )
 
 func RegisterHandlers(r *gin.Engine) {
@@ -142,6 +143,14 @@ func registerAdminHandler(r *gin.Engine) {
 		message.GET("/list", messageAPI.GetList)        // 留言列表
 		message.DELETE("", messageAPI.Delete)           // 删除留言
 		message.PUT("/review", messageAPI.UpdateReview) // 审核留言
+	}
+
+	// 友情链接
+	link := auth.Group("/link")
+	{
+		link.GET("/list", linkAPI.GetList)  // 友链列表
+		link.POST("", linkAPI.SaveOrUpdate) // 新增/编辑友链
+		link.DELETE("", linkAPI.Delete)     // 删除友链
 	}
 
 	// 资源模块

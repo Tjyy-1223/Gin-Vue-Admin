@@ -876,6 +876,39 @@ link := auth.Group("/link")
 }
 ```
 
+首先，我们要补全友链相关的数据库，具体内容在 frient_link.go 以及 z_base.go 中：
+
+friend_link.go
+
+```go
+type FriendLink struct {
+	Model
+	Name    string `gorm:"type:varchar(50)" json:"name"`
+	Avatar  string `gorm:"type:varchar(255)" json:"avatar"`
+	Address string `gorm:"type:varchar(255)" json:"address"`
+	Intro   string `gorm:"type:varchar(255)" json:"intro"`
+}
+```
+
+z_base.go
+
+```go
+func MakeMigrate(db *gorm.DB) error {
+	// 设置表关联
+	// 用于显式地配置一个多对多关系，其中 UserAuth 和 Role 通过一个关联表 UserAuthRole 进行关联。
+	db.SetupJoinTable(&UserAuth{}, "Roles", &UserAuthRole{})
+	db.SetupJoinTable(&Role{}, "Menus", &RoleMenu{})
+	db.SetupJoinTable(&Role{}, "Resources", &RoleResource{})
+	db.SetupJoinTable(&Role{}, "Users", &UserAuthRole{})
+
+	return db.AutoMigrate(
+		...
+		&FriendLink{},   // 友链
+		...
+	)
+}
+```
+
 
 
 ### 3.1 友链列表 /link/list
@@ -883,24 +916,182 @@ link := auth.Group("/link")
 handle_link.go
 
 ```go
+type Link struct{}
 
+// GetList 获取友链列表
+// @Summary 获取友链列表
+// @Description 根据条件查询获取友链列表
+// @Tags Link
+// @Param page_size query int false "当前页数"
+// @Param page_num query int false "每页条数"
+// @Param keyword query string false "搜索关键字"
+// @Accept json
+// @Produce json
+// @Success 0 {object} Response[PageResult[model.FriendLink]]
+// @Security ApiKeyAuth
+// @Router /link/list [get]
+func (*Link) GetList(c *gin.Context) {
+	var query PageQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	data, total, err := model.GetLinkList(GetDB(c), query.Page, query.Size, query.Keyword)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, PageResult[model.FriendLink]{
+		Total: total,
+		List:  data,
+		Size:  query.Size,
+		Page:  query.Page,
+	})
+}
 ```
 
-link.go
+friend_link.go
 
 ```go
+func GetLinkList(db *gorm.DB, num, size int, keyword string) (list []FriendLink, total int64, err error) {
+	db = db.Model(&FriendLink{})
+	if keyword != "" {
+		db = db.Where("name LIKE ?", "%"+keyword+"%")
+		db = db.Or("address LIKE ?", "%"+keyword+"%")
+		db = db.Or("intro LIKE ?", "%"+keyword+"%")
+	}
 
+	db.Count(&total)
+	result := db.Order("created_at DESC").
+		Scopes(Paginate(num, size)).
+		Find(&list)
+	return list, total, result.Error
+}
 ```
+
+对应的请求和响应如下：
+
+![image-20250405121309547](./assets/image-20250405121309547.png)
+
+![image-20250405121427865](./assets/image-20250405121427865.png)
 
 
 
 ### 3.2 新增/编辑友链 /link POST
 
+handle_link.go
+
+```go
+// AddOrEditLinkReq 添加或修改友链
+type AddOrEditLinkReq struct {
+	ID      int    `json:"id"`
+	Name    string `json:"name" binding:"required"`
+	Avatar  string `json:"avatar"`
+	Address string `json:"address" binding:"required"`
+	Intro   string `json:"intro"`
+}
+
+// SaveOrUpdate 添加或修改友链
+// @Summary 添加或修改友链
+// @Description 添加或修改友链
+// @Tags Link
+// @Param form body AddOrEditLinkReq true "添加或修改友链"
+// @Accept json
+// @Produce json
+// @Success 0 {object} Response[model.FriendLink]
+// @Security ApiKeyAuth
+// @Router /link [post]
+func (*Link) SaveOrUpdate(c *gin.Context) {
+	var req AddOrEditLinkReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	link, err := model.SaveOrUpdateLink(GetDB(c), req.ID, req.Name, req.Avatar, req.Address, req.Intro)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, link)
+}
+```
+
+friend_link.go
+
+```go
+func SaveOrUpdateLink(db *gorm.DB, id int, name, avatar, address, intro string) (*FriendLink, error) {
+	link := FriendLink{
+		Model:   Model{ID: id},
+		Name:    name,
+		Avatar:  avatar,
+		Address: address,
+		Intro:   intro,
+	}
+
+	var result *gorm.DB
+	if id > 0 {
+		result = db.Updates(&link)
+	} else {
+		result = db.Create(&link)
+	}
+
+	return &link, result.Error
+}
+```
+
+对应的请求和响应如下：
+
+<img src="./assets/image-20250405121037249.png" alt="image-20250405121037249" style="zoom:67%;" />
+
+![image-20250405121133795](./assets/image-20250405121133795.png)
+
+![image-20250405121216247](./assets/image-20250405121216247.png)
+
 
 
 ### 3.3 删除友链 /link DELETE
 
+handle_link.go
 
+```go
+// Delete 删除友链（批量）
+// @Summary 删除友链（批量）
+// @Description 根据 ID 数组删除友链
+// @Tags Link
+// @Param ids body []int true "友链ID数组"
+// @Accept json
+// @Produce json
+// @Success 0 {object} Response[int64]
+// @Security ApiKeyAuth
+// @Router /link [delete]
+func (*Link) Delete(c *gin.Context) {
+	var ids []int
+	if err := c.ShouldBindJSON(&ids); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	result := GetDB(c).Delete(&model.FriendLink{}, "id in ?", ids)
+	if result.Error != nil {
+		ReturnError(c, global.ErrDbOp, result.Error)
+		return
+	}
+
+	ReturnSuccess(c, result.RowsAffected)
+}
+```
+
+对应的请求和响应如下：
+
+<img src="./assets/image-20250405121501272.png" alt="image-20250405121501272" style="zoom:67%;" />
+
+![image-20250405121604275](./assets/image-20250405121604275.png)
+
+![image-20250405121623816](./assets/image-20250405121623816.png)
 
 
 
