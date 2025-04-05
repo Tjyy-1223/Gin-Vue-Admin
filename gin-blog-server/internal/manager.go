@@ -24,6 +24,7 @@ var (
 	commentAPI  handle.Comment  // 评论
 	messageAPI  handle.Message  // 留言
 	linkAPI     handle.Link     // 友链
+	resourceAPI handle.Resource // 资源
 )
 
 func RegisterHandlers(r *gin.Engine) {
@@ -154,10 +155,14 @@ func registerAdminHandler(r *gin.Engine) {
 	}
 
 	// 资源模块
-	//resource := auth.Group("/resource")
-	//{
-	//	resource.GET("/list", resourceAPI.GetTreeList) // 资源列表(树形)
-	//}
+	resource := auth.Group("/resource")
+	{
+		resource.GET("/list", resourceAPI.GetTreeList)          // 资源列表(树形)
+		resource.POST("", resourceAPI.SaveOrUpdate)             // 新增/编辑资源
+		resource.DELETE("/:id", resourceAPI.Delete)             // 删除资源
+		resource.PUT("/anonymous", resourceAPI.UpdateAnonymous) // 修改资源匿名访问
+		resource.GET("/option", resourceAPI.GetOption)          // 资源选项列表(树形)
+	}
 
 	// 角色模块
 	role := auth.Group("/role")

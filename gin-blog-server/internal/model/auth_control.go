@@ -40,3 +40,38 @@ func CheckRoleAuth(db *gorm.DB, rid int, uri, method string) (bool, error) {
 	}
 	return false, nil
 }
+
+// CheckResourceInUse 检查资源是否在使用中
+func CheckResourceInUse(db *gorm.DB, id int) (bool, error) {
+	var count int64
+	result := db.Model(&RoleResource{}).Where("resource_id = ?", id).Count(&count)
+	return count > 0, result.Error
+}
+
+// GetResourceById 根据 id 获取资源
+func GetResourceById(db *gorm.DB, id int) (resource Resource, err error) {
+	result := db.First(&resource, id)
+	return resource, result.Error
+}
+
+// CheckResourceHasChild 检查该资源中是否有子资源
+func CheckResourceHasChild(db *gorm.DB, id int) (bool, error) {
+	var count int64
+	result := db.Model(&Resource{}).Where("parent_id = ?", id).Count(&count)
+	return count > 0, result.Error
+}
+
+// DeleteResource 删除资源
+func DeleteResource(db *gorm.DB, id int) (int, error) {
+	result := db.Delete(&Resource{}, id)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return int(result.RowsAffected), nil
+}
+
+// UpdateResourceAnonymous 更新资源匿名状态
+func UpdateResourceAnonymous(db *gorm.DB, id int, anonymous bool) error {
+	result := db.Model(&Resource{}).Where("id = ?", id).Update("anonymous", anonymous)
+	return result.Error
+}

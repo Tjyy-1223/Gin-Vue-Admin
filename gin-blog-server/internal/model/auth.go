@@ -273,3 +273,36 @@ func DeleteMenu(db *gorm.DB, id int) error {
 	result := db.Delete(&Menu{}, id)
 	return result.Error
 }
+
+// GetResourceList 获取资源列表
+func GetResourceList(db *gorm.DB, keyword string) (list []Resource, err error) {
+	if keyword != "" {
+		db = db.Where("name like ?", "%"+keyword+"%")
+	}
+
+	result := db.Find(&list)
+	return list, result.Error
+}
+
+// SaveOrUpdateResource 新增或编辑资源
+func SaveOrUpdateResource(db *gorm.DB, id, pid int, name, url, method string) error {
+	resource := Resource{
+		Model:    Model{ID: id},
+		Name:     name,
+		Url:      url,
+		Method:   method,
+		ParentId: pid,
+	}
+
+	var result *gorm.DB
+	if id > 0 {
+		result = db.Updates(&resource)
+	} else {
+		// TODO:
+		// * 解决前端的 BUG: 级联选中某个父节点后, 新增的子节点默认会展示被选中, 实际上未被选中值
+		// * 解决方案: 新增子节点后, 删除该节点对应的父节点与角色的关联关系
+		// dao.Delete(model.RoleResource{}, "resource_id", data.ParentId)
+		result = db.Create(&resource)
+	}
+	return result.Error
+}
