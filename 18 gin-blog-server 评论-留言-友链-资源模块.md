@@ -878,6 +878,30 @@ link := auth.Group("/link")
 
 
 
+### 3.1 友链列表 /link/list
+
+handle_link.go
+
+```go
+
+```
+
+link.go
+
+```go
+
+```
+
+
+
+### 3.2 新增/编辑友链 /link POST
+
+
+
+### 3.3 删除友链 /link DELETE
+
+
+
 
 
 ## 4 资源模块

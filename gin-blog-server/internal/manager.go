@@ -139,7 +139,9 @@ func registerAdminHandler(r *gin.Engine) {
 	// 留言模块
 	message := auth.Group("/message")
 	{
-		message.GET("/list", messageAPI.GetList) // 留言列表
+		message.GET("/list", messageAPI.GetList)        // 留言列表
+		message.DELETE("", messageAPI.Delete)           // 删除留言
+		message.PUT("/review", messageAPI.UpdateReview) // 审核留言
 	}
 
 	// 资源模块
