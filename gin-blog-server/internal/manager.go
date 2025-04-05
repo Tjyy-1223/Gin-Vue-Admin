@@ -22,6 +22,7 @@ var (
 	tagAPI      handle.Tag      // 标签
 	articleAPI  handle.Article  // 文章
 	commentAPI  handle.Comment  // 评论
+	messageAPI  handle.Message  // 留言
 )
 
 func RegisterHandlers(r *gin.Engine) {
@@ -135,6 +136,12 @@ func registerAdminHandler(r *gin.Engine) {
 		comment.PUT("/review", commentAPI.UpdateReview) // 修改评论审核
 	}
 
+	// 留言模块
+	message := auth.Group("/message")
+	{
+		message.GET("/list", messageAPI.GetList) // 留言列表
+	}
+
 	// 资源模块
 	//resource := auth.Group("/resource")
 	//{
@@ -174,6 +181,11 @@ func registerBlogHandler(r *gin.Engine) {
 		tag.GET("/list", frontAPI.GetTagList) // 前台标签列表
 	}
 
+	message := base.Group("/message")
+	{
+		message.GET("/list", frontAPI.GetMessageList) // 前台留言列表
+	}
+
 	comment := base.Group("/comment")
 	{
 		comment.GET("/list", frontAPI.GetCommentList)                         // 前台评论列表
@@ -186,6 +198,7 @@ func registerBlogHandler(r *gin.Engine) {
 		base.GET("/user/info", userAPI.GetInfo)       // 根据 Token 获取用户信息
 		base.PUT("/user/info", userAPI.UpdateCurrent) // 根据 Token 更新当前用户信息
 
+		base.POST("/message", frontAPI.SaveMessage)                 // 前台新增留言
 		base.POST("/comment", frontAPI.SaveComment)                 // 前台新增评论
 		base.GET("/comment/like/:comment_id", frontAPI.LikeComment) // 前台点赞评论
 	}

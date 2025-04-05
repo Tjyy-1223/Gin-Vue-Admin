@@ -3,6 +3,7 @@ package handle
 import (
 	"gin-blog-server/internal/global"
 	"gin-blog-server/internal/model"
+	"gin-blog-server/internal/utils"
 	"github.com/gin-gonic/gin"
 	"html/template"
 	"strconv"
@@ -45,6 +46,13 @@ type FCommentQuery struct {
 	Content     string `json:"content" form:"content"`
 	ParentId    int    `json:"parent_id" form:"parent_id"`
 	Type        int    `json:"type" form:"type"`
+}
+
+type FAddMessageReq struct {
+	Nickname string `json:"nickname" binding:"required"`
+	Avatar   string `json:"avatar"`
+	Content  string `json:"content" binding:"required"`
+	Speed    int    `json:"speed"`
 }
 
 // GetHomeInfo 前台首页信息
@@ -439,4 +447,42 @@ func (*Front) LikeComment(c *gin.Context) {
 	}
 
 	ReturnSuccess(c, nil)
+}
+
+// GetMessageList 查询消息列表
+func (*Front) GetMessageList(c *gin.Context) {
+	isReview := true
+	list, _, err := model.GetMessageList(GetDB(c), 1, 1000, "", &isReview)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, list)
+}
+
+// SaveMessage 保存留言（只能新增，不能编辑）
+// TODO: 添加自定义头像和昵称留言功能（即可以不登录留言）
+func (*Front) SaveMessage(c *gin.Context) {
+	var req FAddMessageReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	req.Content = template.HTMLEscapeString(req.Content)
+	auth, _ := CurrentUserAuth(c)
+	db := GetDB(c)
+
+	ipAddress := utils.IP.GetIpAddress(c)
+	ipSource := utils.IP.GetIpSource(ipAddress)
+	isReview := model.GetConfigBool(db, global.CONFIG_IS_COMMENT_REVIEW)
+
+	info := auth.UserInfo
+	message, err := model.SaveMessage(db, info.Nickname, info.Nickname, req.Content, ipAddress, ipSource, req.Speed, isReview)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, message)
 }

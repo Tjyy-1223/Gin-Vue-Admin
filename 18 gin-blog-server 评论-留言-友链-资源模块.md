@@ -606,6 +606,258 @@ message := auth.Group("/message")
   message.DELETE("", messageAPI.Delete)           // 删除留言
   message.PUT("/review", messageAPI.UpdateReview) // 审核留言
 }
+
+// 前台
+message := base.Group("/message")
+{
+  message.GET("/list", frontAPI.GetMessageList)    // 前台留言列表
+}
+
+// 需要登录才能进行的操作
+base.Use(middleware.JWTAuth())
+{
+  base.POST("/message", frontAPI.SaveMessage)      // 前台新增留言
+}
+```
+
+留言模块和评论模块的功能比较类似，前端界面也比较类似，甚至留言模块更加简单，因为没有类似于评论之间的父子关系。因此，对于下面五个留言相关的功能，我们仅展示其核心代码，不展示请求与响应的具体过程。
+
+
+
+### 2.1 留言列表 /message/list
+
+handle_message.go:
+
+```go
+type Message struct{}
+
+// MessageQuery 条件查询列表
+type MessageQuery struct {
+	PageQuery
+	Nickname string `form:"nickname"`
+	IsReview *bool  `form:"is_review"`
+}
+
+// GetList 条件查询留言列表
+// @Summary 条件查询留言列表
+// @Description 根据条件查询留言列表
+// @Tags Message
+// @Param nickname query string false "昵称"
+// @Param is_review query int false "审核状态"
+// @Param page_size query int false "当前页数"
+// @Param page_num query int false "每页条数"
+// @Accept json
+// @Produce json
+// @Success 0 {object} Response[PageResult[model.Message]]
+// @Security ApiKeyAuth
+// @Router /message/list [get]
+func (*Message) GetList(c *gin.Context) {
+	var query MessageQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	data, total, err := model.GetMessageList(GetDB(c), query.Page, query.Size, query.Nickname, query.IsReview)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, PageResult[model.Message]{
+		Total: total,
+		List:  data,
+		Size:  query.Size,
+		Page:  query.Page,
+	})
+}
+```
+
+message.go:
+
+```go
+func GetMessageList(db *gorm.DB, num, size int, nickname string, isReview *bool) (list []Message, total int64, err error) {
+	db = db.Model(&Message{})
+
+	if nickname != "" {
+		db = db.Where("nickname LIKE ?", "%"+nickname+"%")
+	}
+
+	if isReview != nil {
+		db = db.Where("is_review = ?", *isReview)
+	}
+
+	db.Count(&total)
+	result := db.Order("created_at DESC").Scopes(Paginate(num, size)).Find(&list)
+	return list, total, result.Error
+}
+```
+
+
+
+### 2.2 删除留言 /message DELETE
+
+handle_message.go:
+
+```go
+// Delete 删除留言（批量）
+// @Summary 删除留言（批量）
+// @Description 根据 ID 数组删除留言
+// @Tags Category
+// @Param ids body []int true "留言 ID 数组"
+// @Accept json
+// @Produce json
+// @Success 0 {object} Response[int]
+// @Security ApiKeyAuth
+// @Router /category [delete]
+func (*Message) Delete(c *gin.Context) {
+	var ids []int
+	if err := c.ShouldBindJSON(&ids); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	rows, err := model.DeleteMessages(GetDB(c), ids)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, rows)
+}
+```
+
+message.go:
+
+```go
+func DeleteMessages(db *gorm.DB, ids []int) (int64, error) {
+	result := db.Where("id in ?", ids).Delete(&Message{})
+	return result.RowsAffected, result.Error
+}
+```
+
+
+
+### 2.3 审核留言 /message/review
+
+handle_message.go:
+
+```go
+// UpdateReview 修改留言审核（批量）
+// @Summary 修改留言审核（批量）
+// @Description 根据 ID 数组修改审核状态
+// @Tags Message
+// @Param form body UpdateReviewReq true "修改审核状态"
+// @Accept json
+// @Produce json
+// @Success 0 {object} Response[int]
+// @Security ApiKeyAuth
+// @Router /message/review [put]
+func (*Message) UpdateReview(c *gin.Context) {
+	var req UpdateReviewReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	rows, err := model.UpdateMessagesReview(GetDB(c), req.Ids, req.IsReview)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, rows)
+}
+```
+
+message.go:
+
+```go
+func UpdateMessagesReview(db *gorm.DB, ids []int, isReview bool) (int64, error) {
+  result := db.Model(&Message{}).Where("id in ?", ids).Update("is_review", isReview)
+  return result.RowsAffected, result.Error
+}
+```
+
+
+
+### 2.4 前台留言列表 /message/list front
+
+handle_front.go:
+
+```go
+// GetMessageList 查询消息列表
+func (*Front) GetMessageList(c *gin.Context) {
+	isReview := true
+	list, _, err := model.GetMessageList(GetDB(c), 1, 1000, "", &isReview)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+	ReturnSuccess(c, list)
+}
+```
+
+
+
+### 2.5 前台新增留言 /message POST
+
+handle_front.go:
+
+```go
+type FAddMessageReq struct {
+	Nickname string `json:"nickname" binding:"required"`
+	Avatar   string `json:"avatar"`
+	Content  string `json:"content" binding:"required"`
+	Speed    int    `json:"speed"`
+}
+
+// SaveMessage 保存留言（只能新增，不能编辑）
+// TODO: 添加自定义头像和昵称留言功能（即可以不登录留言）
+func (*Front) SaveMessage(c *gin.Context) {
+	var req FAddMessageReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	req.Content = template.HTMLEscapeString(req.Content)
+	auth, _ := CurrentUserAuth(c)
+	db := GetDB(c)
+
+	ipAddress := utils.IP.GetIpAddress(c)
+	ipSource := utils.IP.GetIpSource(ipAddress)
+	isReview := model.GetConfigBool(db, global.CONFIG_IS_COMMENT_REVIEW)
+
+	info := auth.UserInfo
+	message, err := model.SaveMessage(db, info.Nickname, info.Nickname, req.Content, ipAddress, ipSource, req.Speed, isReview)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, message)
+}
+```
+
+message.go:
+
+```go
+// SaveMessage 保存留言功能
+func SaveMessage(db *gorm.DB, nickname, avatar, content, address, source string, speed int, isReview bool) (*Message, error) {
+	message := Message{
+		Nickname:  nickname,
+		Avatar:    avatar,
+		Content:   content,
+		IpAddress: address,
+		IpSource:  source,
+		Speed:     speed,
+		IsReview:  isReview,
+	}
+
+	result := db.Create(&message)
+	return &message, result.Error
+}
 ```
 
 
@@ -623,6 +875,8 @@ link := auth.Group("/link")
   link.DELETE("", linkAPI.Delete)     // 删除友链
 }
 ```
+
+
 
 
 
