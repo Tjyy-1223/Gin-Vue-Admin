@@ -497,3 +497,30 @@ func (*Front) GetLinkList(c *gin.Context) {
 
 	ReturnSuccess(c, list)
 }
+
+// LikeArticle 点赞文章
+// 需要记录某个用户已经对某篇文章点过赞, 防止重复点赞
+func (*Front) LikeArticle(c *gin.Context) {
+	auth, _ := CurrentUserAuth(c)
+
+	articleId, err := strconv.Atoi(c.Param("article_id"))
+	if err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	rdb := GetRDB(c)
+
+	// 记录某个用户已经对某个文章点过赞
+	articleLikeUserKey := global.ARTICLE_USER_LIKE_SET + strconv.Itoa(auth.ID)
+	// 该文章已经被记录过, 再点赞就是取消点赞
+	if rdb.SIsMember(rctx, articleLikeUserKey, articleId).Val() {
+		rdb.SRem(rctx, articleLikeUserKey, articleId)
+		rdb.HIncrBy(rctx, global.ARTICLE_LIKE_COUNT, strconv.Itoa(articleId), -1)
+	} else { // 未被记录过, 则是增加点赞
+		rdb.SAdd(rctx, articleLikeUserKey, articleId)
+		rdb.HIncrBy(rctx, global.ARTICLE_LIKE_COUNT, strconv.Itoa(articleId), 1)
+	}
+
+	ReturnSuccess(c, nil)
+}

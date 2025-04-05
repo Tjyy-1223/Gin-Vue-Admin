@@ -811,7 +811,7 @@ Qiniu:
 
 
 
-## 5 前台点赞评论/文章
+## 5 前台点赞文章
 
 manager.go
 
@@ -823,14 +823,46 @@ func registerBlogHandler(r *gin.Engine) {
 	base.Use(middleware.JWTAuth())
 	{
 		...
-		base.GET("/comment/like/:comment_id", frontAPI.LikeComment) // 前台点赞评论
 		base.GET("/article/like/:article_id", frontAPI.LikeArticle) // 前台点赞文章
 	}
 }
 ```
 
-### 5.1 前台点赞评论 /comment/like/:comment_id
+前台点赞文章 /article/like/:article_id 的开发逻辑如下：
 
+handle_front,go
 
+```go
+// LikeArticle 点赞文章
+// 需要记录某个用户已经对某篇文章点过赞, 防止重复点赞
+func (*Front) LikeArticle(c *gin.Context) {
+	auth, _ := CurrentUserAuth(c)
 
-### 5.2 前台点赞文章 /article/like/:article_id
+	articleId, err := strconv.Atoi(c.Param("article_id"))
+	if err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	rdb := GetRDB(c)
+
+	// 记录某个用户已经对某个文章点过赞
+	articleLikeUserKey := global.ARTICLE_USER_LIKE_SET + strconv.Itoa(auth.ID)
+	// 该文章已经被记录过, 再点赞就是取消点赞
+	if rdb.SIsMember(rctx, articleLikeUserKey, articleId).Val() {
+		rdb.SRem(rctx, articleLikeUserKey, articleId)
+		rdb.HIncrBy(rctx, global.ARTICLE_LIKE_COUNT, strconv.Itoa(articleId), -1)
+	} else { // 未被记录过, 则是增加点赞
+		rdb.SAdd(rctx, articleLikeUserKey, articleId)
+		rdb.HIncrBy(rctx, global.ARTICLE_LIKE_COUNT, strconv.Itoa(articleId), 1)
+	}
+
+	ReturnSuccess(c, nil)
+}
+```
+
+对应的请求和响应如下：
+
+![image-20250405175242080](./assets/image-20250405175242080.png)
+
+可以看到结果正确，即点赞成功。

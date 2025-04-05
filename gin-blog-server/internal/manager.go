@@ -246,5 +246,6 @@ func registerBlogHandler(r *gin.Engine) {
 		base.POST("/message", frontAPI.SaveMessage)                 // 前台新增留言
 		base.POST("/comment", frontAPI.SaveComment)                 // 前台新增评论
 		base.GET("/comment/like/:comment_id", frontAPI.LikeComment) // 前台点赞评论
+		base.GET("/article/like/:article_id", frontAPI.LikeArticle) // 前台点赞文章
 	}
 }
