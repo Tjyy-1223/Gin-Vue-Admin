@@ -197,6 +197,11 @@ func registerBlogHandler(r *gin.Engine) {
 		tag.GET("/list", frontAPI.GetTagList) // 前台标签列表
 	}
 
+	link := base.Group("/link")
+	{
+		link.GET("/list", frontAPI.GetLinkList) // 前台友链列表
+	}
+
 	message := base.Group("/message")
 	{
 		message.GET("/list", frontAPI.GetMessageList) // 前台留言列表

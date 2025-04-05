@@ -1095,6 +1095,34 @@ func (*Link) Delete(c *gin.Context) {
 
 
 
+### 3.4 友链前台补充 /link/list
+
+manager.go
+
+```go
+link := base.Group("/link")
+{
+  link.GET("/list", frontAPI.GetLinkList) // 前台友链列表
+}
+```
+
+handle_front.go
+
+```go
+// GetLinkList 获取友链列表
+func (*Front) GetLinkList(c *gin.Context) {
+	list, _, err := model.GetLinkList(GetDB(c), 1, 1000, "")
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, list)
+}
+```
+
+
+
 ## 4 资源模块
 
 资源模块的接口如下：

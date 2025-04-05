@@ -486,3 +486,14 @@ func (*Front) SaveMessage(c *gin.Context) {
 
 	ReturnSuccess(c, message)
 }
+
+// GetLinkList 获取友链列表
+func (*Front) GetLinkList(c *gin.Context) {
+	list, _, err := model.GetLinkList(GetDB(c), 1, 1000, "")
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	ReturnSuccess(c, list)
+}
