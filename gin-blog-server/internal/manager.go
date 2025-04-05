@@ -15,7 +15,6 @@ var (
 	blogInfoAPI     handle.BlogInfo     // 博客设置
 	userAPI         handle.User         // 用户
 	pageAPI         handle.Page         // 页面
-	frontAPI        handle.Front        // 博客前台接口
 	menuAPI         handle.Menu         // 菜单
 	roleAPI         handle.Role         // 角色
 	categoryAPI     handle.Category     // 分类
@@ -26,6 +25,10 @@ var (
 	linkAPI         handle.Link         // 友链
 	resourceAPI     handle.Resource     // 资源
 	operationLogAPI handle.OperationLog // 操作日志
+	uploadAPI       handle.Upload       // 文件上传
+
+	// 博客前台接口
+	frontAPI handle.Front // 博客前台接口
 )
 
 func RegisterHandlers(r *gin.Engine) {
@@ -69,6 +72,7 @@ func registerAdminHandler(r *gin.Engine) {
 	auth.Use(middleware.ListenOnline())
 
 	auth.GET("/home", blogInfoAPI.GetHomeInfo) // 后台首页信息
+	auth.POST("/upload", uploadAPI.UploadFile) // 文件上传
 
 	// 博客设置
 	setting := auth.Group("/setting")
@@ -235,6 +239,7 @@ func registerBlogHandler(r *gin.Engine) {
 	// 需要登录才能进行的操作
 	base.Use(middleware.JWTAuth())
 	{
+		base.POST("/upload", uploadAPI.UploadFile)    // 文件上传
 		base.GET("/user/info", userAPI.GetInfo)       // 根据 Token 获取用户信息
 		base.PUT("/user/info", userAPI.UpdateCurrent) // 根据 Token 更新当前用户信息
 

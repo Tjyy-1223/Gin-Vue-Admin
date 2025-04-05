@@ -40,8 +40,8 @@ Captcha:
   ExpireTime: 15  # 过期时间 (分钟)
 Upload:
   OssType: "local" # local | qiniu
-  Path: "public/uploaded"      # 本地文件访问路径: OssType="local" 生效
-  StorePath: "../public/uploaded" # 本地文件上传路径: 相对于 main.go, OssType="local" 生效
+  Path: "./public/uploaded"      # 本地文件访问路径: OssType="local" 生效
+  StorePath: "./public/uploaded" # 本地文件上传路径: 相对于 main.go, OssType="local" 生效
 Qiniu:
   ImgPath: "" # 外链
   Zone: ""

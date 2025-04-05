@@ -533,6 +533,8 @@ func (*Page) Delete(c *gin.Context) {
 manager.go
 
 ```go
+auth.POST("/upload", uploadAPI.UploadFile) // 文件上传
+
 // 博客前台的接口: 大部分不需要登录, 部分需要登录
 func registerBlogHandler(r *gin.Engine) {
 	...
@@ -545,9 +547,267 @@ func registerBlogHandler(r *gin.Engine) {
 }
 ```
 
+### 4.1 文章上传 /api/upload
+
+handle_upload.go
+
+```go
+// UploadFile 上传文件
+// @Summary 上传文件
+// @Description 上传文件
+// @Tags upload
+// @Accept multipart/form-data
+// @Produce json
+// @Param file formData file true "文件"
+// @Success 0 {object} Response[string]
+// @Router /upload/file [post]
+func (*Upload) UploadFile(c *gin.Context) {
+	// 获取文件头信息
+	_, fileHeader, err := c.Request.FormFile("file")
+	if err != nil {
+		ReturnError(c, global.ErrFileReceive, err)
+		return
+	}
+
+	// 获取 oss 对象存储接口
+	oss := upload.NewOSS()
+	// 实现图片上传
+	filePath, _, err := oss.UploadFile(fileHeader)
+	if err != nil {
+		ReturnError(c, global.ErrFileUpload, err)
+		return
+	}
+
+	ReturnSuccess(c, filePath)
+}
+```
+
+新建文件夹 /utils/upload
+
+oss.go
+
+```go
+// NewOSS 根据配置文件中的配置判断文件上传实例
+func NewOSS() OSS {
+	switch global.GetConfig().Upload.OssType {
+	case "local":
+		return &Local{}
+	case "qiniu":
+		return &Qiniu{}
+	default:
+		return &Local{}
+	}
+}
+```
+
+#### 4.4.1 Local 存储方式
+
+local.go
+
+```go
+package upload
+
+import (
+	"errors"
+	"gin-blog-server/internal/global"
+	"gin-blog-server/internal/utils"
+	"io"
+	"log/slog"
+	"mime/multipart"
+	"os"
+	"path"
+	"strings"
+	"time"
+)
+
+// Local 本地文件上传
+type Local struct{}
+
+// UploadFile 文件上传到本地
+func (*Local) UploadFile(file *multipart.FileHeader) (filePath, fileName string, err error) {
+	ext := path.Ext(file.Filename)
+	name := strings.TrimSuffix(file.Filename, ext) // 读取文件名
+	name = utils.MD5(name)
+
+	filename := name + "_" + time.Now().Format("20060102150405") + ext // 拼接新文件名
+
+	conf := global.Conf.Upload
+	mkdirErr := os.MkdirAll(conf.StorePath, os.ModePerm) // 尝试创建存储路径
+	if mkdirErr != nil {
+		slog.Error("function os.MkdirAll() Filed", slog.Any("err", mkdirErr.Error()))
+		return "", "", errors.New("function os.MkdirAll() Filed, err:" + mkdirErr.Error())
+	}
+
+	storePath := conf.StorePath + "/" + filename // 文件存储路径
+	filepath := conf.Path + "/" + filename       // 文件展示路径
+
+	f, openError := file.Open() // 读取文件
+	if openError != nil {
+		slog.Error("function file.Open() Filed", slog.String("err", openError.Error()))
+		return "", "", errors.New("function file.Open() Filed, err:" + openError.Error())
+	}
+	defer f.Close() // 创建文件 defer 关闭
+
+	// 创建文件的保存位置，即文件写入位置
+	out, createErr := os.Create(storePath)
+	if createErr != nil {
+		slog.Error("function os.Create() Filed", slog.String("err", createErr.Error()))
+		return "", "", errors.New("function os.Create() Filed, err:" + createErr.Error())
+	}
+	defer out.Close()
+
+	_, copyErr := io.Copy(out, f) // 拷贝文件
+	if copyErr != nil {
+		slog.Error("function io.Copy() Filed", slog.String("err", copyErr.Error()))
+		return "", "", errors.New("function io.Copy() Filed, err:" + copyErr.Error())
+	}
+	return filepath, filename, nil
+}
+
+// DeleteFile 从本地删除文件
+func (*Local) DeleteFile(key string) error {
+	p := global.GetConfig().Upload.StorePath + "/" + key
+	if strings.Contains(p, global.GetConfig().Upload.StorePath) {
+		if err := os.Remove(p); err != nil {
+			return errors.New("本地文件删除失败, err:" + err.Error())
+		}
+	}
+	return nil
+}
+```
 
 
-### 4.1 文件上传 /upload
+
+#### 4.4.2 七牛云存储方式
+
+首先加载对应的配置
+
+```bash
+go get github.com/qiniu/go-sdk/v7/storage
+go get github.com/qiniu/go-sdk/v7/auth/qbox
+```
+
+qiniu.go
+
+```go
+package upload
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"gin-blog-server/internal/global"
+	"gin-blog-server/internal/utils"
+	"github.com/qiniu/go-sdk/v7/auth/qbox"
+	"github.com/qiniu/go-sdk/v7/storage"
+	"mime/multipart"
+	"path"
+	"time"
+)
+
+// Qiniu 七牛云文件上传
+type Qiniu struct{}
+
+func (*Qiniu) UploadFile(file *multipart.FileHeader) (filePath, fileName string, err error) {
+	putPolicy := storage.PutPolicy{Scope: global.GetConfig().Qiniu.Bucket}
+	mac := qbox.NewMac(global.GetConfig().Qiniu.AccessKey, global.GetConfig().Qiniu.SecretKey)
+	upToken := putPolicy.UploadToken(mac)
+	formUploader := storage.NewFormUploader(qiniuConfig())
+
+	ret := storage.PutRet{}
+	putExtra := storage.PutExtra{Params: map[string]string{"x:name": "github logo"}}
+
+	f, openError := file.Open()
+	if openError != nil {
+		return "", "", errors.New("function file.Open() Filed, err:" + openError.Error())
+	}
+	defer f.Close()
+
+	// 文件名格式 建议保证唯一性
+	fileKey := fmt.Sprintf("%d%s%s", time.Now().Unix(), utils.MD5(file.Filename), path.Ext(file.Filename))
+	putErr := formUploader.Put(context.Background(), &ret, upToken, fileKey, f, file.Size, &putExtra)
+	if putErr != nil {
+		return "", "", errors.New("function formUploader.Put() Filed, err:" + putErr.Error())
+	}
+	return global.GetConfig().Qiniu.ImgPath + "/" + ret.Key, ret.Key, nil
+}
+
+func (*Qiniu) DeleteFile(key string) error {
+	mac := qbox.NewMac(global.GetConfig().Qiniu.AccessKey, global.GetConfig().Qiniu.SecretKey)
+	cfg := qiniuConfig()
+	bucketManager := storage.NewBucketManager(mac, cfg)
+
+	if err := bucketManager.Delete(global.GetConfig().Qiniu.Bucket, key); err != nil {
+		return errors.New("function bucketManager.Delete() Filed, err:" + err.Error())
+	}
+	return nil
+}
+
+// 七牛云配置信息
+func qiniuConfig() *storage.Config {
+	cfg := storage.Config{
+		UseHTTPS:      global.GetConfig().Qiniu.UseHTTPS,
+		UseCdnDomains: global.GetConfig().Qiniu.UseCdnDomains,
+	}
+	switch global.GetConfig().Qiniu.Zone { // 根据配置文件进行初始化空间对应的机房
+	case "ZoneHuadong":
+		cfg.Zone = &storage.ZoneHuadong
+	case "ZoneHuabei":
+		cfg.Zone = &storage.ZoneHuabei
+	case "ZoneHuanan":
+		cfg.Zone = &storage.ZoneHuanan
+	case "ZoneBeimei":
+		cfg.Zone = &storage.ZoneBeimei
+	case "ZoneXinjiapo":
+		cfg.Zone = &storage.ZoneXinjiapo
+	}
+	return &cfg
+}
+```
+
+
+
+#### 4.4.3 文件上传测试
+
+默认配置中，图片使用 local 配置，即上传后的图片会保存在服务器本地上：
+
++ Path 为本地文件访问路径
++ StorePath 为本地文件上传后保存的路径
+
+```yaml
+Upload:
+  OssType: "local" # local | qiniu
+  Path: "./public/uploaded"      # 本地文件访问路径: OssType="local" 生效
+  StorePath: "./public/uploaded" # 本地文件上传路径: 相对于 main.go, OssType="local" 生效
+Qiniu:
+  ImgPath: "" # 外链
+  Zone: ""
+  Bucket: ""
+  AccessKey: ""
+  SecretKey: ""
+  UseHttps: false
+  UseCdnDomains: false
+```
+
+文件上传的请求和响应如下：
+
+![image-20250405173228187](./assets/image-20250405173228187.png)
+
+![image-20250405173300647](./assets/image-20250405173300647.png)
+
+![image-20250405173353229](./assets/image-20250405173353229.png)
+
+可以看到，默认的本地上传，将图片展示在了一个新的文件夹中
+
+<img src="/Users/tianjiangyu/MyStudy/Go-learning/B2-Gin-Vue-Admin/assets/image-20250405173440072.png" alt="image-20250405173440072" style="zoom:67%;" />
+
+### 4.2 文件上传 /api/front/upload
+
+**与 4.1 文章上传 /api/upload 共用同一段代码，实现相同的功能。**
+
+
+
+
 
 
 
@@ -568,8 +828,6 @@ func registerBlogHandler(r *gin.Engine) {
 	}
 }
 ```
-
-
 
 ### 5.1 前台点赞评论 /comment/like/:comment_id
 
