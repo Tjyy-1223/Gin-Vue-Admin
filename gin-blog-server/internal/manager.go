@@ -11,20 +11,21 @@ import (
 
 var (
 	// 后端管理系统接口
-	userAuthAPI handle.UserAuth // 用户账号
-	blogInfoAPI handle.BlogInfo // 博客设置
-	userAPI     handle.User     // 用户
-	pageAPI     handle.Page     // 页面
-	frontAPI    handle.Front    // 博客前台接口
-	menuAPI     handle.Menu     // 菜单
-	roleAPI     handle.Role     // 角色
-	categoryAPI handle.Category // 分类
-	tagAPI      handle.Tag      // 标签
-	articleAPI  handle.Article  // 文章
-	commentAPI  handle.Comment  // 评论
-	messageAPI  handle.Message  // 留言
-	linkAPI     handle.Link     // 友链
-	resourceAPI handle.Resource // 资源
+	userAuthAPI     handle.UserAuth     // 用户账号
+	blogInfoAPI     handle.BlogInfo     // 博客设置
+	userAPI         handle.User         // 用户
+	pageAPI         handle.Page         // 页面
+	frontAPI        handle.Front        // 博客前台接口
+	menuAPI         handle.Menu         // 菜单
+	roleAPI         handle.Role         // 角色
+	categoryAPI     handle.Category     // 分类
+	tagAPI          handle.Tag          // 标签
+	articleAPI      handle.Article      // 文章
+	commentAPI      handle.Comment      // 评论
+	messageAPI      handle.Message      // 留言
+	linkAPI         handle.Link         // 友链
+	resourceAPI     handle.Resource     // 资源
+	operationLogAPI handle.OperationLog // 操作日志
 )
 
 func RegisterHandlers(r *gin.Engine) {
@@ -172,6 +173,14 @@ func registerAdminHandler(r *gin.Engine) {
 		role.DELETE("", roleAPI.Delete)        // 删除角色
 		role.GET("/option", roleAPI.GetOption) // 角色选项列表(树形)
 	}
+
+	// 操作日志模块
+	operationLog := auth.Group("/operation/log")
+	{
+		operationLog.GET("/list", operationLogAPI.GetList) // 操作日志列表
+		operationLog.DELETE("", operationLogAPI.Delete)    // 删除操作日志
+	}
+
 }
 
 // 博客前台相关接口：大部分不需要登陆，部分需要登陆
