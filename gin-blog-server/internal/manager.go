@@ -167,7 +167,10 @@ func registerAdminHandler(r *gin.Engine) {
 	// 角色模块
 	role := auth.Group("/role")
 	{
-		role.GET("/option", roleAPI.GetOption)
+		role.GET("/list", roleAPI.GetTreeList) // 角色列表(树形)
+		role.POST("", roleAPI.SaveOrUpdate)    // 新增/编辑菜单
+		role.DELETE("", roleAPI.Delete)        // 删除角色
+		role.GET("/option", roleAPI.GetOption) // 角色选项列表(树形)
 	}
 }
 

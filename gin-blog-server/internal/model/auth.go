@@ -102,6 +102,16 @@ type RoleMenu struct {
 	MenuId int `json:"-" gorm:"primaryKey;uniqueIndex:idx_role_menu"`
 }
 
+type RoleVO struct {
+	ID          int       `json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	Name        string    `json:"name"`
+	Label       string    `json:"label"`
+	IsDisable   bool      `json:"is_disable"`
+	ResourceIds []int     `json:"resource_ids" gorm:"-"`
+	MenuIds     []int     `json:"menu_ids" gorm:"-"`
+}
+
 // GetRoleIdsByUserId 根据用户的 UserAuthId 查询该用户拥有的角色 ID 列表
 // 参数:
 //
@@ -305,4 +315,100 @@ func SaveOrUpdateResource(db *gorm.DB, id, pid int, name, url, method string) er
 		result = db.Create(&resource)
 	}
 	return result.Error
+}
+
+// GetRoleList 获取角色列表
+func GetRoleList(db *gorm.DB, num, size int, keyword string) (list []RoleVO, total int64, err error) {
+	db = db.Model(&Role{})
+	if keyword != "" {
+		db = db.Where("name like ?", "%"+keyword+"%")
+	}
+	db.Count(&total)
+	result := db.Select("id", "name", "label", "created_at", "is_disable").
+		Scopes(Paginate(num, size)).
+		Find(&list)
+	return list, total, result.Error
+}
+
+func GetResourceIdsByRoleId(db *gorm.DB, roleId int) (ids []int, err error) {
+	result := db.Model(&RoleResource{}).
+		Where("role_id = ?", roleId).
+		Pluck("resource_id", &ids)
+	return ids, result.Error
+}
+
+func GetMenuIdsByRoleId(db *gorm.DB, roleId int) (ids []int, err error) {
+	result := db.Model(&RoleMenu{}).
+		Where("role_id = ?", roleId).
+		Pluck("menu_id", &ids)
+	return ids, result.Error
+}
+
+func SaveRole(db *gorm.DB, name, label string) error {
+	role := Role{
+		Name:  name,
+		Label: label,
+	}
+	result := db.Create(&role)
+	return result.Error
+}
+
+func UpdateRole(db *gorm.DB, id int, name, label string, isDisable bool, resourceIds, menuIds []int) error {
+	role := Role{
+		Model:     Model{ID: id},
+		Name:      name,
+		Label:     label,
+		IsDisable: isDisable,
+	}
+
+	// 同时更新多个数据库表
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := db.Model(&role).Select("name", "label", "is_disable").Updates(&role).Error; err != nil {
+			return err
+		}
+
+		// role_resource
+		if err := db.Delete(&RoleResource{}, "role_id = ?", id).Error; err != nil {
+			return err
+		}
+		for _, rid := range resourceIds {
+			if err := db.Create(&RoleResource{RoleId: role.ID, ResourceId: rid}).Error; err != nil {
+				return err
+			}
+		}
+
+		// role_menu
+		if err := db.Delete(&RoleMenu{}, "role_id = ?", id).Error; err != nil {
+			return err
+		}
+		for _, mid := range menuIds {
+			if err := db.Create(&RoleMenu{RoleId: role.ID, MenuId: mid}).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+}
+
+// DeleteRoles 删除角色: 事务删除 role, role_resource, role_menu
+func DeleteRoles(db *gorm.DB, ids []int) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		result := db.Delete(&Role{}, "id in ?", ids)
+		if result.Error != nil {
+			return result.Error
+		}
+
+		result = db.Delete(&RoleResource{}, "role_id in ?", ids)
+		if result.Error != nil {
+			return result.Error
+		}
+
+		result = db.Delete(&RoleMenu{}, "role_id in ?", ids)
+		if result.Error != nil {
+			return result.Error
+		}
+
+		return nil
+	})
 }
