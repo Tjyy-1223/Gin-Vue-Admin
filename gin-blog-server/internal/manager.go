@@ -181,6 +181,13 @@ func registerAdminHandler(r *gin.Engine) {
 		operationLog.DELETE("", operationLogAPI.Delete)    // 删除操作日志
 	}
 
+	// 页面模块
+	page := auth.Group("/page")
+	{
+		page.GET("/list", pageAPI.GetList)  // 页面列表
+		page.POST("", pageAPI.SaveOrUpdate) // 新增/编辑页面
+		page.DELETE("", pageAPI.Delete)     // 删除页面
+	}
 }
 
 // 博客前台相关接口：大部分不需要登陆，部分需要登陆

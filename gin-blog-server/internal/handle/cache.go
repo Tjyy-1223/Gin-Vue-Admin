@@ -66,3 +66,8 @@ func getPageCache(rdb *redis.Client) (cache []model.Page, err error) {
 	}
 	return cache, nil
 }
+
+// 删除 Redis 中页面列表缓存
+func removePageCache(rdb *redis.Client) error {
+	return rdb.Del(rctx, global.PAGE).Err()
+}

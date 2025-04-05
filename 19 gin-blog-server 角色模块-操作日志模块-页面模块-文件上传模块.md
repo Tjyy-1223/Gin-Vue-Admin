@@ -392,7 +392,9 @@ func (*OperationLog) Delete(c *gin.Context) {
 
 ## 3 页面模块
 
-manager.go
+页面模块主要对文章的封面进行处理，主要有三个属性 name、label、cover
+
+manager.go 
 
 ```go
 // 页面模块
@@ -406,13 +408,123 @@ page := auth.Group("/page")
 
 ### 3.1 页面列表 /page/list
 
-
+获取页面列表之前已经开发过了，这里直接忽略。
 
 ### 3.2 新增/编辑页面 /page POST
+
+handle_page.go
+
+```go
+// SaveOrUpdate 添加或修改页面
+// @Summary 添加或修改页面
+// @Description 添加或修改页面
+// @Tags Page
+// @Param form body AddOrEditPageReq true "添加或修改页面"
+// @Accept json
+// @Produce json
+// @Success 0 {object} Response[model.Page]
+// @Security ApiKeyAuth
+// @Router /page [post]
+func (*Page) SaveOrUpdate(c *gin.Context) {
+	var req model.Page
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	db := GetDB(c)
+	rdb := GetRDB(c)
+
+	page, err := model.SaveOrUpdatePage(db, req.ID, req.Name, req.Label, req.Cover)
+	if err != nil {
+		ReturnError(c, global.ErrDbOp, err)
+		return
+	}
+
+	// delete cache
+	if err := removePageCache(rdb); err != nil {
+		ReturnError(c, global.ErrRedisOp, err)
+		return
+	}
+
+	ReturnSuccess(c, page)
+}
+```
+
+page.go
+
+```go
+// SaveOrUpdatePage 保存或更新一个新的 Page 记录
+func SaveOrUpdatePage(db *gorm.DB, id int, name, label, cover string) (*Page, error) {
+	page := Page{
+		Model: Model{ID: id},
+		Name:  name,
+		Label: label,
+		Cover: cover,
+	}
+
+	var result *gorm.DB
+	if id > 0 {
+		result = db.Updates(&page)
+	} else {
+		result = db.Create(&page)
+	}
+
+	return &page, result.Error
+}
+
+```
+
+cache.go
+
+```go
+// 删除 Redis 中页面列表缓存
+func removePageCache(rdb *redis.Client) error {
+   return rdb.Del(rctx, global.PAGE).Err()
+}
+```
 
 
 
 ### 3.3 删除页面 /page DELETE
+
+handle_page.go
+
+```go
+// Delete 删除封面
+// @Summary 删除页面
+// @Description 根据 ID 数组删除页面
+// @Tags Page
+// @Param ids body []int true "页面 ID 数组"
+// @Accept json
+// @Produce json
+// @Success 0 {object} Response[int]
+// @Security ApiKeyAuth
+// @Router /page [delete]
+func (*Page) Delete(c *gin.Context) {
+	var ids []int
+	if err := c.ShouldBindJSON(&ids); err != nil {
+		ReturnError(c, global.ErrRequest, err)
+		return
+	}
+
+	result := GetDB(c).Delete(model.Page{}, "id in ?", ids)
+	if result.Error != nil {
+		ReturnError(c, global.ErrDbOp, result.Error)
+		return
+	}
+
+	// delete cache
+	if err := removePageCache(GetRDB(c)); err != nil {
+		ReturnError(c, global.ErrRedisOp, err)
+		return
+	}
+
+	ReturnSuccess(c, result.RowsAffected)
+}
+```
+
+
 
 
 
